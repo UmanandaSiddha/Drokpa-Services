@@ -1,0 +1,80 @@
+import { BullModule } from '@nestjs/bullmq';
+import { Global, Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EMAIL_QUEUE, WEBHOOK_QUEUE } from 'src/config/constants';
+import { LoggerModule } from '../logger/logger.module';
+import { DatabaseModule } from '../database/database.module';
+import { ConnectionOptions } from 'bullmq';
+
+@Global()
+@Module({
+    imports: [
+        LoggerModule,
+        DatabaseModule,
+        BullModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => {
+                const connectionConfig: ConnectionOptions = {
+                    host: configService.get<string>('REDIS_HOST'),
+                    port: configService.get<number>('REDIS_PORT'),
+                    retryDelayOnFailover: 100,
+                    connectTimeout: 10000,
+                    lazyConnect: false,
+                    maxRetriesPerRequest: null,
+                    retryStrategy: (times: number) => {
+                        const delay = Math.min(times * 2000, 30000);
+                        console.log(`BullMQ Redis retry attempt ${times}, delay: ${delay}ms`);
+                        return delay;
+                    },
+                    enableReadyCheck: true,
+                    keepAlive: 30000,
+                    reconnectOnError: (err: Error) => {
+                        const targetErrors = [
+                            'READONLY',
+                            'ECONNRESET',
+                            'ENOTFOUND',
+                            'ETIMEDOUT',
+                            'Socket closed unexpectedly'
+                        ];
+                        console.error('BullMQ Redis error:', err.message);
+                        return targetErrors.some(targetError => err.message.includes(targetError)) ? 1 : false;
+                    },
+                };
+
+                console.log('BullMQ Redis configuration applied');
+
+                return {
+                    connection: connectionConfig,
+                    defaultJobOptions: {
+                        removeOnComplete: 50,
+                        removeOnFail: 20,
+                        attempts: 3,
+                        backoff: {
+                            type: 'exponential',
+                            delay: 2000,
+                        },
+                    },
+                };
+            },
+        }),
+        BullModule.registerQueue(
+            {
+                name: WEBHOOK_QUEUE,
+                defaultJobOptions: {
+                    removeOnComplete: 50,
+                    removeOnFail: 20,
+                }
+            },
+            {
+                name: EMAIL_QUEUE,
+                defaultJobOptions: {
+                    removeOnComplete: 50,
+                    removeOnFail: 20,
+                }
+            },
+        ),
+    ],
+    exports: [BullModule],
+})
+export class QueueModule { }

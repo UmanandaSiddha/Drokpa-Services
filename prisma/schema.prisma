@@ -1,0 +1,472 @@
+generator client {
+    provider = "prisma-client"
+    output   = "../generated/prisma"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+enum UserRole {
+    ADMIN
+    USER
+    HOST
+    VENDOR
+    GUIDE
+}
+
+enum Gender {
+    MALE
+    FEMALE
+    OTHER
+}
+
+enum AuthProvider {
+    OTP
+    PASSWORD
+    GOOGLE
+}
+
+model User {
+    id               String         @id @default(uuid())
+    email            String?        @unique
+    firstName        String?
+    lastName         String?
+    passwordHash     String?
+    isVerified       Boolean        @default(false)
+    avatarUrl        String?
+    gender           Gender?
+    dateOfBirth      DateTime?
+    lastLogin        DateTime?
+    createdAt        DateTime       @default(now()) @map("created_at")
+    updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
+    oneTimePassword  String?
+    oneTimeExpire    DateTime?
+    resetToken       String?
+    resetTokenExpire DateTime?
+    roles            UserRoleMap[]
+    sessions         Session[]
+    authIdentities   AuthIdentity[]
+    bookings         Booking[]
+    documents        Document[]
+    reviews          Review[]
+    providerProfile  Provider[]
+    memories         Memories[]
+}
+
+model UserRoleMap {
+    id     String   @id @default(uuid())
+    userId String
+    role   UserRole
+    user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, role])
+}
+
+model AuthIdentity {
+    id         String       @id @default(uuid())
+    userId     String
+    provider   AuthProvider
+    providerId String
+    user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerId])
+}
+
+model Session {
+    id           String   @id @default(uuid())
+    userId       String
+    refreshToken String
+    expiresAt    DateTime
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Provider {
+    id         String           @id @default(uuid())
+    name       String
+    type       ProviderType
+    verified   Boolean          @default(false)
+    userId     String?
+    user       User?            @relation(fields: [userId], references: [id])
+    tours      Tour[]
+    activities Activity[]
+    homestays  Homestay[]
+    payouts    ProviderPayout[]
+    createdAt  DateTime         @default(now()) @map("created_at")
+    updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at")
+}
+
+enum ProviderType {
+    PLATFORM
+    TOUR_VENDOR
+    ACTIVITY_VENDOR
+    HOMESTAY_HOST
+    LOCAL_BUDDY
+}
+
+model Review {
+    id         String       @id @default(uuid())
+    userId     String
+    targetType ReviewTarget
+    targetId   String
+    rating     Int
+    comment    String?
+
+    bookingId String?
+    booking   Booking? @relation(fields: [bookingId], references: [id])
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, targetType, targetId])
+}
+
+enum ReviewTarget {
+    TOUR
+    ACTIVITY
+    HOMESTAY
+    LOCAL_BUDDY
+}
+
+model TourItinerary {
+    id        String @id @default(uuid())
+    tourId    String
+    dayNumber Int
+    title     String
+    details   Json?
+
+    tour Tour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+}
+
+model Tour {
+    id          String          @id @default(uuid())
+    title       String
+    description String
+    price       Int
+    duration    Int
+    imageUrls   String[]
+    tags        String[]
+    maxCapacity Int?
+    isActive    Boolean         @default(true)
+    latitude    Float
+    longitude   Float
+    address     String
+    about       String?
+    included    String[]
+    notIncluded String[]
+    highlights  String[]
+    brochure    String?
+    providerId  String
+    provider    Provider        @relation(fields: [providerId], references: [id])
+    itinerary   TourItinerary[]
+    createdAt   DateTime        @default(now()) @map("created_at")
+    updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at")
+}
+
+model Activity {
+    id          String   @id @default(uuid())
+    title       String
+    description String
+    price       Int
+    duration    Int
+    providerId  String
+    provider    Provider @relation(fields: [providerId], references: [id])
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model Homestay {
+    id          String         @id @default(uuid())
+    name        String
+    description String
+    latitude    Float
+    longitude   Float
+    address     String
+    tags        String[]
+    facilities  String[]
+    imageUrls   String[]
+    email       String
+    phoneNumber String
+    isActive    Boolean        @default(true)
+    providerId  String
+    provider    Provider       @relation(fields: [providerId], references: [id])
+    rooms       HomestayRoom[]
+    createdAt   DateTime       @default(now()) @map("created_at")
+    updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at")
+}
+
+model HomestayRoom {
+    id           String             @id @default(uuid())
+    homestayId   String
+    name         String
+    capacity     Int
+    basePrice    Int
+    totalRooms   Int
+    homestay     Homestay           @relation(fields: [homestayId], references: [id])
+    availability RoomAvailability[]
+}
+
+model RoomAvailability {
+    id        String       @id @default(uuid())
+    roomId    String
+    date      DateTime
+    available Int
+    room      HomestayRoom @relation(fields: [roomId], references: [id])
+
+    @@unique([roomId, date])
+}
+
+model Destinations {
+    id          String   @id @default(uuid())
+    name        String
+    description String
+    imageUrls   String[]
+    tripPrice   Int
+    noOfDays    Int[]
+    tags        String[]
+    latitude    Float
+    longitude   Float
+    address     String
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model Booking {
+    id     String        @id @default(uuid())
+    userId String
+    status BookingStatus
+    source BookingSource @default(ONLINE)
+
+    user    User          @relation(fields: [userId], references: [id])
+    items   BookingItem[]
+    reviews Review[]
+    payment Payment[]
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model BookingItem {
+    id          String      @id @default(uuid())
+    bookingId   String
+    productType ProductType
+    productId   String
+    startDate   DateTime?
+    endDate     DateTime?
+    quantity    Int
+    price       Int
+
+    booking Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    guests  BookingGuest[]
+}
+
+model BookingGuest {
+    id            String @id @default(uuid())
+    bookingItemId String
+
+    fullName      String
+    contactNumber String
+    age           Int
+    gender        Gender
+
+    passportPhotoId String?
+    passportPhoto   Document? @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
+
+    identityProofId String?
+    identityProof   Document? @relation("IdentityProof", fields: [identityProofId], references: [id])
+
+    bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+enum ProductType {
+    TOUR
+    ACTIVITY
+    HOMESTAY_ROOM
+    LOCAL_BUDDY
+}
+
+enum BookingSource {
+    ONLINE
+    OFFLINE
+}
+
+enum BookingStatus {
+    CREATED
+    PAYMENT_PENDING
+    CONFIRMED
+    CANCELLED
+    REFUNDED
+}
+
+model Payment {
+    id                String          @id @default(uuid())
+    amount            Int
+    currency          String          @default("INR")
+    status            PaymentStatus
+    provider          PaymentProvider
+    providerOrderId   String?
+    providerPaymentId String?
+    notes             String?
+    method            MethodEnum?
+    cardToken         String?
+    cardLast4         String?
+    cardNetwork       String?
+    cardBank          String?
+    upiVpa            String?
+    upiName           String?
+    bankCode          String?
+    bankName          String?
+    nickname          String?
+    bookingId         String?
+    booking           Booking?        @relation(fields: [bookingId], references: [id])
+
+    refunds Refund[]
+    payouts ProviderPayout[]
+    webhook WebhookEvent[]
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+    @@index([bookingId])
+}
+
+model Refund {
+    id        String       @id @default(uuid())
+    paymentId String
+    amount    Int
+    reason    String?
+    status    RefundStatus
+    payment   Payment      @relation(fields: [paymentId], references: [id])
+    createdAt DateTime     @default(now())
+}
+
+model ProviderPayout {
+    id          String       @id @default(uuid())
+    providerId  String
+    paymentId   String?
+    amount      Int
+    periodStart DateTime
+    periodEnd   DateTime
+    status      PayoutStatus
+    provider    Provider     @relation(fields: [providerId], references: [id])
+    payment     Payment?     @relation(fields: [paymentId], references: [id])
+    createdAt   DateTime     @default(now()) @map("created_at")
+    updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
+}
+
+enum RefundStatus {
+    INITIATED
+    PROCESSED
+    FAILED
+}
+
+enum PayoutStatus {
+    PENDING
+    PAID
+    FAILED
+}
+
+model CancellationPolicy {
+    id          String      @id @default(uuid())
+    productType ProductType
+    productId   String
+    hoursBefore Int
+    refundPct   Int
+    createdAt   DateTime    @default(now()) @map("created_at")
+    updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+
+    @@unique([productType, productId])
+}
+
+enum MethodEnum {
+    CARD
+    UPI
+    NETBANKING
+    WALLET
+}
+
+model WebhookEvent {
+    id          String    @id @default(uuid())
+    eventType   String
+    receivedAt  DateTime  @default(now())
+    signature   String?
+    rawBody     Json
+    processed   Boolean   @default(false)
+    processedAt DateTime?
+    notes       String?
+    paymentId   String?
+    payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+    createdAt   DateTime  @default(now()) @map("created_at")
+    updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+
+    @@index([eventType])
+    @@index([paymentId])
+}
+
+enum PaymentProvider {
+    RAZORPAY
+    STRIPE
+}
+
+enum PaymentStatus {
+    CREATED
+    AUTHORIZED
+    CAPTURED
+    FAILED
+    REFUNDED
+}
+
+model Document {
+    id     String       @id @default(uuid())
+    userId String
+    type   DocumentType
+    url    String
+
+    user User @relation(fields: [userId], references: [id])
+
+    passportPhotos BookingGuest[] @relation("PassportPhoto")
+    identityProofs BookingGuest[] @relation("IdentityProof")
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+enum DocumentType {
+    PASSPORT
+    ID_PROOF
+    PERMIT
+}
+
+model AppBanner {
+    id        String   @id @default(uuid())
+    name      String
+    imageUrl  String[]
+    redirect  String
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+enum ConfigType {
+    HOME_PAGE
+}
+
+model AppUiConfig {
+    id        String     @id @default(uuid())
+    name      String
+    type      ConfigType @default(HOME_PAGE)
+    uiConfig  Json
+    createdAt DateTime   @default(now()) @map("created_at")
+    updatedAt DateTime   @default(now()) @updatedAt @map("updated_at")
+}
+
+model Memories {
+    id          String   @id @default(uuid())
+    title       String
+    description String?
+    imageUrls   String[]
+    userId      String
+    user        User     @relation(fields: [userId], references: [id])
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+}
