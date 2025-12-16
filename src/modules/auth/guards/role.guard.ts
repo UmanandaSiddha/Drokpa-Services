@@ -5,36 +5,44 @@ import {
 	ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRoleMap } from 'generated/prisma/client';
+import { UserRole } from 'generated/prisma/client';
 
 @Injectable()
 export class RoleGuard implements CanActivate {
 	constructor(private reflector: Reflector) { }
 
 	canActivate(context: ExecutionContext): boolean {
-		const requiredRoles = this.reflector.getAllAndOverride<UserRoleMap[]>('roles', [
-			context.getHandler(),
-			context.getClass(),
-		]);
+		const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(
+			'roles',
+			[context.getHandler(), context.getClass()],
+		);
 
-		if (!requiredRoles) {
+		if (!requiredRoles || requiredRoles.length === 0) {
 			return true;
 		}
 
-		const { user } = context.switchToHttp().getRequest();
+		const request = context.switchToHttp().getRequest();
+		const user = request.user;
 
-		if (!user || !user.role) {
-			throw new ForbiddenException('User role not found');
+		if (!user || !Array.isArray(user.roles)) {
+			throw new ForbiddenException('User roles not found');
 		}
 
-		const hasRequiredRole = requiredRoles.includes(
-			user.role as UserRoleMap,
+		const userRoles: UserRole[] = user.roles.map(
+			(r: { role: UserRole }) => r.role,
+		);
+
+		const hasRequiredRole = requiredRoles.some((role) =>
+			userRoles.includes(role),
 		);
 
 		if (!hasRequiredRole) {
-			throw new ForbiddenException(`Access denied. Required roles: ${requiredRoles.join(', ')}`);
+			throw new ForbiddenException(
+				`Access denied. Required roles: ${requiredRoles.join(', ')}`,
+			);
 		}
 
 		return true;
 	}
 }
+

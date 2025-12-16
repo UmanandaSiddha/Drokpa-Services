@@ -17,7 +17,7 @@ import { Request, Response } from 'express';
 import { RequestDto } from './dto/request.dto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuthProvider, Prisma, User, UserRole } from 'generated/prisma/client';
+import { AuthProvider, Prisma, User, UserRole, UserRoleMap } from 'generated/prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -31,11 +31,17 @@ export class AuthService {
 	// --- Helper Functions ---
 
 	// Verify user by token
-	async validateUserByToken(token: string): Promise<User> {
+	async validateUserByToken(token: string): Promise<User & { roles: UserRoleMap[] }> {
 		try {
 			const secret = this.config.get<string>('ACCESS_TOKEN_SECRET');
 			const payload: { id: string } = await this.jwtService.verifyAsync(token, { secret });
-			const user = await this.databaseService.user.findUnique({ where: { id: payload.id } });
+
+			const user = await this.databaseService.user.findUnique({
+				where: { id: payload.id },
+				include: {
+					roles: true
+				}
+			});
 			if (!user) throw new UnauthorizedException('Invalid user.');
 
 			return user;

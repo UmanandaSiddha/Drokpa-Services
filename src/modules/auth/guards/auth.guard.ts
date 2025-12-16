@@ -9,10 +9,10 @@ import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorator/public.decorator';
 import { AuthService } from '../auth.service';
-import { User } from 'generated/prisma/client';
+import { User, UserRoleMap } from 'generated/prisma/client';
 
 interface AuthenticatedRequest extends Request {
-	user?: User;
+	user?: User & { roles: UserRoleMap[] };
 }
 
 @Injectable()
@@ -36,18 +36,18 @@ export class AuthGuard implements CanActivate {
 			return true;
 		}
 
-		const req = context.switchToHttp().getRequest<Request>();
+		const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
 		const token = this.extractToken(req);
 		if (!token) throw new UnauthorizedException('No token.');
 
-		const user: User = await this.authService.validateUserByToken(token);
-		(req as any).user = user;
+		const user = await this.authService.validateUserByToken(token);
+		req.user = user;
 		return true;
 	}
 }
 
 export const getUser = createParamDecorator(
-	(data: keyof User | undefined, ctx: ExecutionContext) => {
+	(data: keyof (User & { roles: UserRoleMap[] }) | undefined, ctx: ExecutionContext) => {
 		const request = ctx.switchToHttp().getRequest<AuthenticatedRequest>();
 		if (!request.user) {
 			throw new UnauthorizedException('User not found in request.');

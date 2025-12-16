@@ -38,6 +38,7 @@ model User {
     gender           Gender?
     dateOfBirth      DateTime?
     lastLogin        DateTime?
+    customerId       String?
     createdAt        DateTime       @default(now()) @map("created_at")
     updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
     oneTimePassword  String?
@@ -387,18 +388,20 @@ enum MethodEnum {
 }
 
 model WebhookEvent {
-    id          String    @id @default(uuid())
-    eventType   String
-    receivedAt  DateTime  @default(now())
-    signature   String?
-    rawBody     Json
-    processed   Boolean   @default(false)
-    processedAt DateTime?
-    notes       String?
-    paymentId   String?
-    payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-    createdAt   DateTime  @default(now()) @map("created_at")
-    updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+    id              String          @id @default(uuid())
+    provider        PaymentProvider
+    providerEventId String          @unique
+    eventType       String
+    receivedAt      DateTime        @default(now())
+    signature       String?
+    rawBody         Json
+    processed       Boolean         @default(false)
+    processedAt     DateTime?
+    notes           String?
+    paymentId       String?
+    payment         Payment?        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+    createdAt       DateTime        @default(now()) @map("created_at")
+    updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
 
     @@index([eventType])
     @@index([paymentId])
