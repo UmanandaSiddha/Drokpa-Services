@@ -91,19 +91,6 @@ enum PaymentStatus {
     REFUNDED
 }
 
-enum IdentityProvider {
-    DIGILOCKER
-    PROVIDER_B
-    PROVIDER_C
-}
-
-enum IdentityStatus {
-    PENDING
-    VERIFIED
-    FAILED
-    EXPIRED
-}
-
 enum PermitStatus {
     REQUIRED
     COLLECTING_DOCS
@@ -310,7 +297,6 @@ model User {
     resetTokenExpire DateTime?
 
     provider       Provider?
-    identities     UserIdentity[]
     roles          UserRoleMap[]
     sessions       Session[]
     authIdentities AuthIdentity[]
@@ -327,21 +313,6 @@ model UserRoleMap {
     user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([userId, role])
-}
-
-model UserIdentity {
-    id            String           @id @default(uuid())
-    userId        String
-    provider      IdentityProvider
-    providerRefId String
-    status        IdentityStatus
-    verifiedAt    DateTime?
-    expiresAt     DateTime?
-    metadata      Json?
-
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-    @@unique([provider, providerRefId])
 }
 
 model AuthIdentity {

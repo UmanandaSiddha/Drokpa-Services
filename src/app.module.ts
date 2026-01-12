@@ -19,7 +19,6 @@ import { VehicleModule } from './modules/vehicle/vehicle.module';
 import { LocalGuideModule } from './modules/local-guide/local-guide.module';
 import { POIModule } from './modules/poi/poi.module';
 import { PermitModule } from './modules/permit/permit.module';
-import { IdentityModule } from './modules/identity/identity.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { FeatureFlagModule } from './modules/feature-flag/feature-flag.module';
 import { AddressModule } from './modules/address/address.module';
@@ -52,7 +51,6 @@ import { HomestayModule } from './modules/homestay/homestay.module';
 		LocalGuideModule,
 		POIModule,
 		PermitModule,
-		IdentityModule,
 		OnboardingModule,
 		FeatureFlagModule,
 		AddressModule,
