@@ -170,7 +170,7 @@ export class AuthService {
 				email,
 				roles: {
 					create: {
-						role: process.env.DEFAULT_ADMIN_EMAI === email ? UserRole.ADMIN : UserRole.USER
+						role: process.env.DEFAULT_ADMIN_EMAIL === email ? UserRole.ADMIN : UserRole.USER
 					}
 				},
 				authIdentities: {
