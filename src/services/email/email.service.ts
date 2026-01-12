@@ -37,8 +37,16 @@ export class EmailService {
 
     /**
      * Queue an email to be sent asynchronously
+     * Only queues in production mode
      */
     async queueEmail(dto: SendEmailDto): Promise<void> {
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (!isProduction) {
+            this.logger.log(`[DEV] Email not queued (production mode only): ${dto.to} - ${dto.subject}`);
+            return;
+        }
+
         await this.emailQueue.add('send-email', dto, {
             attempts: 3,
             backoff: {

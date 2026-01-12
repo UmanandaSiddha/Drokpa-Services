@@ -6,11 +6,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthGuard } from './guards/auth.guard';
 import { DatabaseModule } from 'src/services/database/database.module';
 import { SocketGuard } from './guards/socket.guard';
+import { EmailModule } from 'src/services/email/email.module';
 
 @Module({
 	imports: [
 		ConfigModule,
 		DatabaseModule,
+		EmailModule,
 		JwtModule.registerAsync({
 			inject: [ConfigService],
 			useFactory: async (configService: ConfigService) => ({

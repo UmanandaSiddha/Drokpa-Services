@@ -59,4 +59,16 @@ export class AuthController {
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @getUser('id') userId: string) {
 		return this.authService.logout(req, res, userId);
 	}
+
+	// REQUEST PASSWORD RESET
+	@Post('forgot-password')
+	requestPasswordReset(@Body() dto: RequestDto) {
+		return this.authService.requestPasswordReset(dto);
+	}
+
+	// RESET PASSWORD
+	@Post('reset-password')
+	resetPassword(@Body() body: { token: string; password: string }) {
+		return this.authService.resetPassword(body.token, body.password);
+	}
 }

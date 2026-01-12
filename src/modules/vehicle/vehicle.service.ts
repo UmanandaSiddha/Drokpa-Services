@@ -115,4 +115,68 @@ export class VehicleService {
             orderBy: { createdAt: 'desc' },
         });
     }
+
+    async getNearbyVehicles(latitude: number, longitude: number, radiusKm: number = 20) {
+        const radiusMeters = radiusKm * 1000;
+
+        const nearbyVehicles = await this.databaseService.$queryRaw<Array<{
+            id: string;
+            name: string;
+            type: string;
+            brand: string | null;
+            model: string | null;
+            registrationNo: string;
+            imageUrls: string[];
+            basePricePerDay: number;
+            bookingMode: string[];
+            isActive: boolean;
+            providerId: string;
+            addressId: string | null;
+            distance: number;
+        }>>`
+            SELECT 
+                v.*,
+                ST_Distance(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+                ) as distance
+            FROM "Vehicle" v
+            LEFT JOIN "Address" a ON v."addressId" = a.id
+            WHERE v."isActive" = true
+                AND a.location IS NOT NULL
+                AND ST_DWithin(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+                    ${radiusMeters}
+                )
+            ORDER BY ST_Distance(
+                a.location,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+            )
+        `;
+
+        // Fetch full vehicle data with relations
+        const vehicleIds = nearbyVehicles.map(v => v.id);
+        const vehicles = await this.databaseService.vehicle.findMany({
+            where: { id: { in: vehicleIds } },
+            include: {
+                provider: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                address: true,
+            },
+        });
+
+        // Map distances to vehicles
+        return vehicles.map(vehicle => {
+            const vehicleData = nearbyVehicles.find(v => v.id === vehicle.id);
+            return {
+                ...vehicle,
+                distance: vehicleData ? Number(vehicleData.distance) / 1000 : null, // Convert meters to km
+            };
+        });
+    }
 }

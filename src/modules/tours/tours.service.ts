@@ -133,4 +133,67 @@ export class ToursService {
             },
         });
     }
+
+    async getNearbyTours(latitude: number, longitude: number, radiusKm: number = 50) {
+        const radiusMeters = radiusKm * 1000;
+
+        const nearbyTours = await this.databaseService.$queryRaw<Array<{
+            id: string;
+            title: string;
+            description: string;
+            price: number;
+            duration: number;
+            imageUrls: string[];
+            tags: string[];
+            maxCapacity: number;
+            isActive: boolean;
+            addressId: string | null;
+            distance: number;
+        }>>`
+            SELECT 
+                t.*,
+                ST_Distance(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+                ) as distance
+            FROM "Tour" t
+            LEFT JOIN "Address" a ON t."addressId" = a.id
+            WHERE t."isActive" = true
+                AND a.location IS NOT NULL
+                AND ST_DWithin(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+                    ${radiusMeters}
+                )
+            ORDER BY ST_Distance(
+                a.location,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+            )
+        `;
+
+        // Fetch full tour data with relations
+        const tourIds = nearbyTours.map(t => t.id);
+        const tours = await this.databaseService.tour.findMany({
+            where: { id: { in: tourIds } },
+            include: {
+                itinerary: {
+                    include: {
+                        pois: {
+                            include: { poi: true },
+                        },
+                    },
+                },
+                address: true,
+            },
+        });
+
+        // Map distances to tours
+        return tours.map(tour => {
+            const tourData = nearbyTours.find(t => t.id === tour.id);
+            return {
+                ...tour,
+                distance: tourData ? Number(tourData.distance) / 1000 : null, // Convert meters to km
+            };
+        });
+    }
 }

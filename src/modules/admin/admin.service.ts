@@ -154,4 +154,24 @@ export class AdminService {
             orderBy: { createdAt: 'desc' },
         });
     }
+
+    /**
+     * Get all admin email addresses for notifications
+     */
+    async getAdminEmails(): Promise<string[]> {
+        const adminUsers = await this.databaseService.user.findMany({
+            where: {
+                roles: {
+                    some: {
+                        role: 'ADMIN',
+                    },
+                },
+            },
+            select: {
+                email: true,
+            },
+        });
+
+        return adminUsers.map(user => user.email).filter(email => !!email);
+    }
 }

@@ -21,6 +21,13 @@ export class EmailProcessor extends WorkerHost {
     async process(job: Job<SendEmailDto, any, string>): Promise<any> {
         this.logger.log(`Processing email job: ${job.name} with ID: ${job.id}, To: ${job.data.to}`);
 
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (!isProduction) {
+            this.logger.log(`[DEV] Email job ${job.id} skipped (production mode only)`);
+            return { success: true, skipped: true, message: 'Email skipped in development mode' };
+        }
+
         try {
             await this.emailService.sendEmail(job.data);
             return { success: true, messageId: job.id };

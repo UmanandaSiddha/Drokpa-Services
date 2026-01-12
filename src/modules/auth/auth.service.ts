@@ -11,6 +11,7 @@ import {
 	LoginDto,
 } from './dto';
 import { DatabaseService } from 'src/services/database/database.service';
+import { EmailService } from 'src/services/email/email.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from "crypto";
 import { Request, Response } from 'express';
@@ -26,6 +27,7 @@ export class AuthService {
 		private readonly databaseService: DatabaseService,
 		private readonly config: ConfigService,
 		private readonly jwtService: JwtService,
+		private readonly emailService: EmailService,
 	) { }
 
 	// --- Helper Functions ---
@@ -139,11 +141,12 @@ export class AuthService {
 			},
 		});
 
-		if (process.env.NODE_ENV === "production") {
-			// await this.sendOtp(phoneNumber, otpString);
-		}
+		// Send OTP email (production only)
+		await this.emailService.sendOtpEmail(email, otpString);
 
-		console.log("OTP: ", otpString);
+		if (process.env.NODE_ENV !== "production") {
+			console.log("OTP: ", otpString);
+		}
 
 		return { message: 'OTP sent successfully!!', success: true };
 	}
@@ -204,11 +207,12 @@ export class AuthService {
 		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
 		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
-		if (process.env.NODE_ENV === "production") {
-			// await this.sendOtp(phoneNumber, otpString);
+		// Send welcome email with OTP (production only)
+		await this.emailService.sendOtpEmail(email, otpString);
 
+		if (process.env.NODE_ENV !== "production") {
+			console.log("OTP: ", otpString);
 		}
-		console.log("OTP: ", otpString);
 
 		return { message: 'User registered successfully!!', data: newUser, accessToken, clientRefreshToken };
 	}
@@ -259,6 +263,18 @@ export class AuthService {
 
 		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
 		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
+
+		// Send verification success email (production only)
+		await this.emailService.queueEmail({
+			to: email,
+			subject: 'Account Verified - Drokpa',
+			html: `
+				<p>Dear ${updatedUser.firstName} ${updatedUser.lastName},</p>
+				<p>Your account has been successfully verified!</p>
+				<p>You can now enjoy all the features of Drokpa.</p>
+				<p>Thank you for choosing Drokpa!</p>
+			`,
+		});
 
 		return { message: 'User verified successfully', data: updatedUser, accessToken, clientRefreshToken };
 	}
@@ -356,5 +372,84 @@ export class AuthService {
 		await this.clearToken(res, "REFRESH_TOKEN");
 
 		return { success: true, message: 'User logged out successfully!!' }
+	}
+
+	async requestPasswordReset(dto: RequestDto) {
+		const { email } = dto;
+
+		const user = await this.databaseService.user.findUnique({
+			where: { email }
+		});
+		if (!user) {
+			// Don't reveal if user exists
+			return { message: 'If an account exists with this email, a password reset link has been sent.', success: true };
+		}
+
+		const resetToken = crypto.randomBytes(32).toString('hex');
+		const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+		const resetTokenExpire = Date.now() + 60 * 60 * 1000; // 1 hour
+
+		await this.databaseService.user.update({
+			where: { id: user.id },
+			data: {
+				resetToken: resetTokenHash,
+				resetTokenExpire: new Date(resetTokenExpire),
+			},
+		});
+
+		// Send password reset email (production only)
+		const resetUrl = `${process.env.FRONTEND_URL || 'https://drokpa.com'}/reset-password?token=${resetToken}`;
+		await this.emailService.queueEmail({
+			to: email,
+			subject: 'Password Reset Request - Drokpa',
+			html: `
+				<p>Dear ${user.firstName} ${user.lastName},</p>
+				<p>You requested a password reset. Click the link below to reset your password:</p>
+				<p><a href="${resetUrl}">${resetUrl}</a></p>
+				<p>This link will expire in 1 hour.</p>
+				<p>If you didn't request this, please ignore this email.</p>
+			`,
+		});
+
+		return { message: 'If an account exists with this email, a password reset link has been sent.', success: true };
+	}
+
+	async resetPassword(token: string, newPassword: string) {
+		const resetTokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+		const user = await this.databaseService.user.findFirst({
+			where: {
+				resetToken: resetTokenHash,
+				resetTokenExpire: { gt: new Date() },
+			},
+		});
+
+		if (!user) {
+			throw new BadRequestException('Invalid or expired reset token');
+		}
+
+		const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+		await this.databaseService.user.update({
+			where: { id: user.id },
+			data: {
+				passwordHash: hashedPassword,
+				resetToken: null,
+				resetTokenExpire: null,
+			},
+		});
+
+		// Send password reset confirmation email (production only)
+		await this.emailService.queueEmail({
+			to: user.email,
+			subject: 'Password Reset Successful - Drokpa',
+			html: `
+				<p>Dear ${user.firstName} ${user.lastName},</p>
+				<p>Your password has been successfully reset.</p>
+				<p>If you didn't make this change, please contact support immediately.</p>
+			`,
+		});
+
+		return { message: 'Password reset successfully', success: true };
 	}
 }

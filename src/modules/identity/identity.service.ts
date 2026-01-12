@@ -1,18 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
+import { DigiLockerService } from './digilocker.service';
 import { VerifyIdentityDto } from './dto/verify-identity.dto';
+import { DigiLockerCallbackDto } from './dto/digilocker-callback.dto';
 import { IdentityStatus, IdentityProvider } from 'generated/prisma/enums';
 
 @Injectable()
 export class IdentityService {
     constructor(
         private readonly databaseService: DatabaseService,
+        private readonly digiLockerService: DigiLockerService,
     ) { }
 
     async initiateVerification(userId: string, dto: VerifyIdentityDto) {
-        // In a real implementation, this would integrate with DigiLocker API
-        // For now, we'll create a pending identity record
-        
         // Check if identity already exists
         const existing = await this.databaseService.userIdentity.findFirst({
             where: {
@@ -26,6 +26,12 @@ export class IdentityService {
             return existing;
         }
 
+        // For DigiLocker, initiate OAuth flow
+        if (dto.provider === IdentityProvider.DIGILOCKER) {
+            return this.initiateDigiLockerVerification(userId);
+        }
+
+        // For other providers, create pending record
         return this.databaseService.userIdentity.create({
             data: {
                 userId,
@@ -34,6 +40,87 @@ export class IdentityService {
                 status: IdentityStatus.PENDING,
             },
         });
+    }
+
+    async initiateDigiLockerVerification(userId: string) {
+        const state = this.digiLockerService.generateStateToken();
+        const authUrl = this.digiLockerService.generateAuthUrl(state);
+
+        // Store state in metadata for verification
+        const identity = await this.databaseService.userIdentity.create({
+            data: {
+                userId,
+                provider: IdentityProvider.DIGILOCKER,
+                providerRefId: state,
+                status: IdentityStatus.PENDING,
+                metadata: {
+                    state: state,
+                    authUrl: authUrl,
+                },
+            },
+        });
+
+        return {
+            ...identity,
+            authUrl, // Return auth URL for redirect
+        };
+    }
+
+    async handleDigiLockerCallback(userId: string, dto: DigiLockerCallbackDto) {
+        // Find identity by state
+        const identity = await this.databaseService.userIdentity.findFirst({
+            where: {
+                userId,
+                provider: IdentityProvider.DIGILOCKER,
+                providerRefId: dto.state,
+                status: IdentityStatus.PENDING,
+            },
+        });
+
+        if (!identity) {
+            throw new NotFoundException('Identity verification not found or already processed');
+        }
+
+        try {
+            // Exchange code for access token
+            const tokenData = await this.digiLockerService.exchangeCodeForToken(dto.code);
+
+            // Fetch user profile
+            const profile = await this.digiLockerService.fetchUserProfile(tokenData.access_token);
+
+            // Fetch user documents (Aadhaar, etc.)
+            const documents = await this.digiLockerService.fetchUserDocuments(tokenData.access_token);
+
+            // Update identity with verified status
+            const updatedIdentity = await this.databaseService.userIdentity.update({
+                where: { id: identity.id },
+                data: {
+                    status: IdentityStatus.VERIFIED,
+                    verifiedAt: new Date(),
+                    providerRefId: profile.uid || profile.aadhaar_number || dto.state,
+                    metadata: {
+                        profile,
+                        documents,
+                        accessToken: tokenData.access_token, // Store temporarily for document access
+                        expiresIn: tokenData.expires_in,
+                    },
+                },
+            });
+
+            return updatedIdentity;
+        } catch (error) {
+            // Update identity with failed status
+            await this.databaseService.userIdentity.update({
+                where: { id: identity.id },
+                data: {
+                    status: IdentityStatus.FAILED,
+                    metadata: {
+                        error: error.message,
+                    },
+                },
+            });
+            throw error;
+        }
     }
 
     async getVerificationStatus(userId: string) {

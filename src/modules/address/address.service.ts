@@ -9,12 +9,22 @@ export class AddressService {
     ) { }
 
     async createAddress(dto: CreateAddressDto) {
-        return this.databaseService.address.create({
+        // Create address with basic fields first
+        const address = await this.databaseService.address.create({
             data: {
                 ...dto,
                 country: dto.country || 'India',
             },
         });
+
+        // Update location field using PostGIS
+        await this.databaseService.$executeRaw`
+            UPDATE "Address"
+            SET location = ST_SetSRID(ST_MakePoint(${dto.longitude}, ${dto.latitude}), 4326)::geography
+            WHERE id = ${address.id}
+        `;
+
+        return this.getAddress(address.id);
     }
 
     async getAddress(id: string) {
@@ -38,25 +48,51 @@ export class AddressService {
             throw new NotFoundException('Address not found');
         }
 
-        return this.databaseService.address.update({
-            where: { id },
-            data: dto,
-        });
+        // If latitude or longitude changed, update location field using PostGIS
+        if (dto.latitude !== undefined || dto.longitude !== undefined) {
+            const lat = dto.latitude ?? address.latitude;
+            const lon = dto.longitude ?? address.longitude;
+            
+            // Update location using PostGIS
+            await this.databaseService.$executeRaw`
+                UPDATE "Address"
+                SET location = ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)::geography
+                WHERE id = ${id}
+            `;
+        }
+
+        // Update other fields using Prisma
+        const updateData: any = { ...dto };
+        delete updateData.latitude;
+        delete updateData.longitude;
+        
+        if (Object.keys(updateData).length > 0) {
+            await this.databaseService.address.update({
+                where: { id },
+                data: updateData,
+            });
+        }
+
+        return this.getAddress(id);
     }
 
     async getNearbyAddresses(latitude: number, longitude: number, radiusKm: number = 10) {
         const radiusMeters = radiusKm * 1000;
 
         const nearbyAddresses = await this.databaseService.$queryRaw`
-            SELECT * FROM "Address"
+            SELECT 
+                id, street, city, state, country, "postalCode", latitude, longitude, 
+                created_at, updated_at,
+                ST_Distance(location, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography) as distance
+            FROM "Address"
             WHERE ST_DWithin(
-                ST_Point(longitude, latitude)::geography,
-                ST_Point(${longitude}, ${latitude})::geography,
+                location,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
                 ${radiusMeters}
             )
             ORDER BY ST_Distance(
-                ST_Point(longitude, latitude)::geography,
-                ST_Point(${longitude}, ${latitude})::geography
+                location,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
             )
         `;
 

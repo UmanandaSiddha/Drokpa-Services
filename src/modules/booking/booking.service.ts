@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { DatabaseService } from "src/services/database/database.service";
 import { EmailService } from "src/services/email/email.service";
+import { AdminService } from "src/modules/admin/admin.service";
 import { CreateTourBookingDto } from "./dto/create-tour-booking.dto";
 import { CreateHomestayBookingDto } from "./dto/create-homestay-booking.dto";
 import { CreateVehicleBookingDto } from "./dto/create-vehicle-booking.dto";
@@ -14,6 +15,7 @@ export class BookingService {
     constructor(
         private readonly databaseService: DatabaseService,
         private readonly emailService: EmailService,
+        private readonly adminService: AdminService,
     ) { }
 
     async createTourBooking(userId: string, payload: CreateTourBookingDto) {
@@ -78,8 +80,44 @@ export class BookingService {
                 });
             }
 
-            // Notify provider (platform-hosted, so notify admin)
-            // This can be enhanced later with admin notification
+            return booking;
+        }).then(async (booking) => {
+            // Send notifications after transaction
+            const user = await this.databaseService.user.findUnique({
+                where: { id: userId },
+                select: { email: true, firstName: true, lastName: true },
+            });
+
+            // Notify user
+            if (user?.email) {
+                await this.emailService.queueEmail({
+                    to: user.email,
+                    subject: 'Booking Request Received - Drokpa',
+                    html: `
+                        <p>Dear ${user.firstName} ${user.lastName},</p>
+                        <p>Your tour booking request has been received successfully.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p>We will review your request and notify you once it's confirmed.</p>
+                        <p>Thank you for choosing Drokpa!</p>
+                    `,
+                });
+            }
+
+            // Notify all admins
+            const adminEmails = await this.adminService.getAdminEmails();
+            for (const adminEmail of adminEmails) {
+                await this.emailService.queueEmail({
+                    to: adminEmail,
+                    subject: 'New Tour Booking Request - Drokpa',
+                    html: `
+                        <p>Dear Admin,</p>
+                        <p>A new tour booking request has been received.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+                        <p>Please review and process the booking.</p>
+                    `,
+                });
+            }
 
             return booking;
         });
@@ -156,12 +194,67 @@ export class BookingService {
                 },
             });
 
+            return booking;
+        }).then(async (booking) => {
+            // Send notifications after transaction
+            const user = await this.databaseService.user.findUnique({
+                where: { id: userId },
+                select: { email: true, firstName: true, lastName: true },
+            });
+
+            // Fetch room again for notifications (outside transaction scope)
+            const room = await this.databaseService.homestayRoom.findUnique({
+                where: { id: dto.roomId },
+                include: {
+                    homestay: {
+                        include: {
+                            provider: {
+                                include: {
+                                    user: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            // Notify user
+            if (user?.email) {
+                await this.emailService.queueEmail({
+                    to: user.email,
+                    subject: 'Booking Request Received - Drokpa',
+                    html: `
+                        <p>Dear ${user.firstName} ${user.lastName},</p>
+                        <p>Your homestay booking request has been received successfully.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p>The host will review your request and notify you once it's confirmed.</p>
+                        <p>Thank you for choosing Drokpa!</p>
+                    `,
+                });
+            }
+
             // Notify provider
-            if (room.homestay.provider.user?.email) {
+            if (room?.homestay.provider.user?.email) {
                 await this.emailService.sendBookingRequestNotification(
                     room.homestay.provider.user.email,
                     { id: booking.id },
                 );
+            }
+
+            // Notify all admins
+            const adminEmails = await this.adminService.getAdminEmails();
+            for (const adminEmail of adminEmails) {
+                await this.emailService.queueEmail({
+                    to: adminEmail,
+                    subject: 'New Homestay Booking Request - Drokpa',
+                    html: `
+                        <p>Dear Admin,</p>
+                        <p>A new homestay booking request has been received.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+                        <p>Please monitor the booking status.</p>
+                    `,
+                });
             }
 
             return booking;
@@ -216,12 +309,51 @@ export class BookingService {
                 },
             });
 
+            return booking;
+        }).then(async (booking) => {
+            // Send notifications after transaction
+            const user = await this.databaseService.user.findUnique({
+                where: { id: userId },
+                select: { email: true, firstName: true, lastName: true },
+            });
+
+            // Notify user
+            if (user?.email) {
+                await this.emailService.queueEmail({
+                    to: user.email,
+                    subject: 'Booking Request Received - Drokpa',
+                    html: `
+                        <p>Dear ${user.firstName} ${user.lastName},</p>
+                        <p>Your vehicle booking request has been received successfully.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p>The provider will review your request and notify you once it's confirmed.</p>
+                        <p>Thank you for choosing Drokpa!</p>
+                    `,
+                });
+            }
+
             // Notify provider
             if (vehicle.provider.user?.email) {
                 await this.emailService.sendBookingRequestNotification(
                     vehicle.provider.user.email,
                     { id: booking.id },
                 );
+            }
+
+            // Notify all admins
+            const adminEmails = await this.adminService.getAdminEmails();
+            for (const adminEmail of adminEmails) {
+                await this.emailService.queueEmail({
+                    to: adminEmail,
+                    subject: 'New Vehicle Booking Request - Drokpa',
+                    html: `
+                        <p>Dear Admin,</p>
+                        <p>A new vehicle booking request has been received.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+                        <p>Please monitor the booking status.</p>
+                    `,
+                });
             }
 
             return booking;
@@ -276,12 +408,51 @@ export class BookingService {
                 },
             });
 
+            return booking;
+        }).then(async (booking) => {
+            // Send notifications after transaction
+            const user = await this.databaseService.user.findUnique({
+                where: { id: userId },
+                select: { email: true, firstName: true, lastName: true },
+            });
+
+            // Notify user
+            if (user?.email) {
+                await this.emailService.queueEmail({
+                    to: user.email,
+                    subject: 'Booking Request Received - Drokpa',
+                    html: `
+                        <p>Dear ${user.firstName} ${user.lastName},</p>
+                        <p>Your local guide booking request has been received successfully.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p>The guide will review your request and notify you once it's confirmed.</p>
+                        <p>Thank you for choosing Drokpa!</p>
+                    `,
+                });
+            }
+
             // Notify provider
             if (guide.provider.user?.email) {
                 await this.emailService.sendBookingRequestNotification(
                     guide.provider.user.email,
                     { id: booking.id },
                 );
+            }
+
+            // Notify all admins
+            const adminEmails = await this.adminService.getAdminEmails();
+            for (const adminEmail of adminEmails) {
+                await this.emailService.queueEmail({
+                    to: adminEmail,
+                    subject: 'New Local Guide Booking Request - Drokpa',
+                    html: `
+                        <p>Dear Admin,</p>
+                        <p>A new local guide booking request has been received.</p>
+                        <p><strong>Booking ID:</strong> ${booking.id}</p>
+                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+                        <p>Please monitor the booking status.</p>
+                    `,
+                });
             }
 
             return booking;

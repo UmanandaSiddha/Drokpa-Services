@@ -56,26 +56,57 @@ export class POIService {
     }
 
     async getNearbyPOIs(latitude: number, longitude: number, radiusKm: number = 10) {
-        // For now, simple distance calculation
-        // In production, use PostGIS for accurate distance queries
-        const allPOIs = await this.databaseService.pOI.findMany({
-            include: {
-                address: true,
-            },
-        });
+        const radiusMeters = radiusKm * 1000;
 
-        // Calculate distance using Haversine formula
-        const nearbyPOIs = allPOIs.filter(poi => {
-            const distance = this.calculateDistance(
-                latitude,
-                longitude,
-                poi.latitude,
-                poi.longitude,
-            );
-            return distance <= radiusKm;
-        });
+        // Use PostGIS for accurate distance queries
+        const nearbyPOIs = await this.databaseService.$queryRaw<Array<{
+            id: string;
+            name: string;
+            description: string | null;
+            specialty: string[];
+            imageUrls: string[];
+            latitude: number;
+            longitude: number;
+            addressId: string | null;
+            created_at: Date;
+            updated_at: Date;
+            distance: number;
+        }>>`
+            SELECT 
+                p.*,
+                ST_Distance(
+                    ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+                ) as distance
+            FROM "POI" p
+            WHERE ST_DWithin(
+                ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+                ${radiusMeters}
+            )
+            ORDER BY ST_Distance(
+                ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+            )
+        `;
 
-        return nearbyPOIs;
+        // Fetch address for each POI
+        const poisWithAddresses = await Promise.all(
+            nearbyPOIs.map(async (poi) => {
+                const address = poi.addressId
+                    ? await this.databaseService.address.findUnique({
+                          where: { id: poi.addressId },
+                      })
+                    : null;
+                return {
+                    ...poi,
+                    address,
+                    distance: Number(poi.distance) / 1000, // Convert meters to km
+                };
+            })
+        );
+
+        return poisWithAddresses;
     }
 
     async updatePOI(id: string, dto: Partial<CreatePOIDto>) {
@@ -135,19 +166,4 @@ export class POIService {
         });
     }
 
-    private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-        const R = 6371; // Radius of the Earth in km
-        const dLat = this.deg2rad(lat2 - lat1);
-        const dLon = this.deg2rad(lon2 - lon1);
-        const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c; // Distance in km
-    }
-
-    private deg2rad(deg: number): number {
-        return deg * (Math.PI / 180);
-    }
 }
