@@ -12,7 +12,7 @@ import { AuthService } from '../auth.service';
 import { User, UserRoleMap } from 'generated/prisma/client';
 
 interface AuthenticatedRequest extends Request {
-	user?: User & { roles: UserRoleMap[] };
+	user?: User & { roles: UserRoleMap[]; providerId?: string };
 }
 
 @Injectable()
@@ -47,7 +47,7 @@ export class AuthGuard implements CanActivate {
 }
 
 export const getUser = createParamDecorator(
-	(data: keyof (User & { roles: UserRoleMap[] }) | undefined, ctx: ExecutionContext) => {
+	(data: keyof (User & { roles: UserRoleMap[]; providerId?: string }) | undefined, ctx: ExecutionContext) => {
 		const request = ctx.switchToHttp().getRequest<AuthenticatedRequest>();
 		if (!request.user) {
 			throw new UnauthorizedException('User not found in request.');

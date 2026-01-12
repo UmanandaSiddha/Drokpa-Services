@@ -1,16 +1,14 @@
 import {
-    IsArray,
     IsDateString,
     IsInt,
     IsString,
     Min,
-    ValidateNested,
+    IsNotEmpty,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import { BookingGuestDto } from './booking-guest.dto';
 
 export class CreateHomestayBookingDto {
     @IsString()
+    @IsNotEmpty()
     roomId: string;
 
     @IsDateString()
@@ -23,8 +21,7 @@ export class CreateHomestayBookingDto {
     @Min(1)
     rooms: number;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => BookingGuestDto)
-    guests: BookingGuestDto[];
+    @IsInt()
+    @Min(1)
+    guestCount: number;
 }

@@ -1,4 +1,4 @@
-import { Gender } from '@prisma/client';
+import { Gender } from 'generated/prisma/enums';
 import {
     IsDateString,
     IsEnum,

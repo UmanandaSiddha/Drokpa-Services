@@ -27,32 +27,297 @@ enum AuthProvider {
     GOOGLE
 }
 
+enum ProviderStatus {
+    PENDING
+    ACTIVE
+    SUSPENDED
+    NOT_ACTIVE
+}
+
+enum ProviderType {
+    TOUR_VENDOR
+    ACTIVITY_VENDOR
+    HOMESTAY_HOST
+    VEHICLE_PARTNER
+    LOCAL_GUIDE
+}
+
+enum ProductType {
+    TOUR
+    ACTIVITY
+    HOMESTAY
+    VEHICLE
+    LOCAL_GUIDE
+}
+
+enum BookingSource {
+    ONLINE
+    OFFLINE
+}
+
+enum BookingStatus {
+    REQUESTED
+    REJECTED
+    AWAITING_PAYMENT
+    CONFIRMED
+    CANCELLED
+    COMPLETED
+    REFUNDED
+}
+
+enum VehicleType {
+    BIKE
+    SCOOTY
+    CAR
+    SUV
+    TEMPO
+}
+
+enum VehicleBookingMode {
+    SELF_DRIVE
+    WITH_DRIVER
+}
+
+enum PaymentProvider {
+    RAZORPAY
+    STRIPE
+}
+
+enum PaymentStatus {
+    CREATED
+    AUTHORIZED
+    CAPTURED
+    FAILED
+    REFUNDED
+}
+
+enum IdentityProvider {
+    DIGILOCKER
+    PROVIDER_B
+    PROVIDER_C
+}
+
+enum IdentityStatus {
+    PENDING
+    VERIFIED
+    FAILED
+    EXPIRED
+}
+
+enum PermitStatus {
+    REQUIRED
+    COLLECTING_DOCS
+    SUBMITTED
+    APPROVED
+    REJECTED
+    EXPIRED
+}
+
+enum PermitDocumentType {
+    PASSPORT_PHOTO
+    ID_PROOF
+    SIGNATURE
+}
+
+enum ReviewTarget {
+    TOUR
+    ACTIVITY
+    HOMESTAY
+    VEHICLE
+    LOCAL_GUIDE
+}
+
+enum RefundStatus {
+    INITIATED
+    PROCESSED
+    FAILED
+}
+
+enum PayoutStatus {
+    PENDING
+    PAID
+    FAILED
+}
+
+enum MethodEnum {
+    CARD
+    UPI
+    NETBANKING
+    WALLET
+}
+
+enum BucketListStatus {
+    DRAFT
+    PENDING_CHECKOUT
+    CONVERTED_TO_BOOKING
+    EXPIRED
+}
+
+enum ServiceType {
+    TOUR_BOOKING
+    HOMESTAY_BOOKING
+    VEHICLE_BOOKING
+    LOCAL_GUIDE_BOOKING
+    ACTIVITY_BOOKING
+}
+
+model Address {
+    id         String                                @id @default(uuid())
+    street     String?
+    city       String
+    state      String
+    country    String                                @default("India")
+    postalCode String?
+    latitude   Float
+    longitude  Float
+    location   Unsupported("geography(Point,4326)")?
+
+    tours       Tour[]
+    homestays   Homestay[]
+    pois        POI[]
+    vehicles    Vehicle[]
+    localGuides LocalGuide[]
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model POI {
+    id          String   @id @default(uuid())
+    name        String
+    description String?
+    specialty   String[]
+    imageUrls   String[]
+    latitude    Float
+    longitude   Float
+    address     Address? @relation(fields: [addressId], references: [id])
+    addressId   String?
+
+    tourItineraryItems TourItineraryPOI[]
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model BucketList {
+    id        String           @id @default(uuid())
+    userId    String
+    tripName  String?
+    status    BucketListStatus @default(DRAFT)
+    user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+    items     BucketListItem[]
+    createdAt DateTime         @default(now()) @map("created_at")
+    updatedAt DateTime         @default(now()) @updatedAt @map("updated_at")
+
+    @@index([userId, status])
+}
+
+model BucketListItem {
+    id           String      @id @default(uuid())
+    bucketListId String
+    productType  ProductType
+    productId    String
+    quantity     Int         @default(1)
+    startDate    DateTime?
+    endDate      DateTime?
+    metadata     Json?
+    bucketList   BucketList  @relation(fields: [bucketListId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now()) @map("created_at")
+}
+
+model Vehicle {
+    id              String               @id @default(uuid())
+    name            String
+    type            VehicleType
+    brand           String?
+    model           String?
+    registrationNo  String               @unique
+    imageUrls       String[]
+    basePricePerDay Int
+    bookingMode     VehicleBookingMode[]
+    isActive        Boolean              @default(true)
+    providerId      String
+    provider        Provider             @relation(fields: [providerId], references: [id])
+    address         Address?             @relation(fields: [addressId], references: [id])
+    addressId       String?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model LocalGuide {
+    id              String   @id @default(uuid())
+    providerId      String
+    provider        Provider @relation(fields: [providerId], references: [id])
+    bio             String?
+    languages       String[]
+    specialties     String[]
+    basePricePerDay Int
+    imageUrls       String[]
+    rating          Float?   @default(0)
+    totalReviews    Int      @default(0)
+    isActive        Boolean  @default(true)
+    address         Address? @relation(fields: [addressId], references: [id])
+    addressId       String?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+}
+
+model Permit {
+    id               String        @id @default(uuid())
+    bookingItemId    String?
+    bookingItem      BookingItem?  @relation(fields: [bookingItemId], references: [id])
+    participantId    String?       @unique
+    participant      BookingGuest? @relation(fields: [participantId], references: [id])
+    status           PermitStatus  @default(REQUIRED)
+    passportPhotoId  String?
+    passportPhoto    Document?     @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
+    identityProofId  String?
+    identityProof    Document?     @relation("IdentityProof", fields: [identityProofId], references: [id])
+    permitDocumentId String?
+    permitDocument   Document?     @relation("PermitDocument", fields: [permitDocumentId], references: [id])
+    submittedAt      DateTime?
+    approvedAt       DateTime?
+    rejectedAt       DateTime?
+    rejectionReason  String?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+    @@index([bookingItemId])
+    @@index([status])
+}
+
 model User {
-    id               String         @id @default(uuid())
-    email            String?        @unique
-    firstName        String?
-    lastName         String?
+    id               String    @id @default(uuid())
+    email            String    @unique
+    firstName        String
+    lastName         String
     passwordHash     String?
-    isVerified       Boolean        @default(false)
+    isVerified       Boolean   @default(false)
     avatarUrl        String?
     gender           Gender?
     dateOfBirth      DateTime?
     lastLogin        DateTime?
     customerId       String?
-    createdAt        DateTime       @default(now()) @map("created_at")
-    updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
+    createdAt        DateTime  @default(now()) @map("created_at")
+    updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
     oneTimePassword  String?
     oneTimeExpire    DateTime?
     resetToken       String?
     resetTokenExpire DateTime?
-    roles            UserRoleMap[]
-    sessions         Session[]
-    authIdentities   AuthIdentity[]
-    bookings         Booking[]
-    documents        Document[]
-    reviews          Review[]
-    providerProfile  Provider[]
-    memories         Memories[]
+
+    provider       Provider?
+    identities     UserIdentity[]
+    roles          UserRoleMap[]
+    sessions       Session[]
+    authIdentities AuthIdentity[]
+    bookings       Booking[]
+    reviews        Review[]
+    memories       Memories[]
+    bucketLists    BucketList[]
 }
 
 model UserRoleMap {
@@ -62,6 +327,21 @@ model UserRoleMap {
     user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([userId, role])
+}
+
+model UserIdentity {
+    id            String           @id @default(uuid())
+    userId        String
+    provider      IdentityProvider
+    providerRefId String
+    status        IdentityStatus
+    verifiedAt    DateTime?
+    expiresAt     DateTime?
+    metadata      Json?
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerRefId])
 }
 
 model AuthIdentity {
@@ -82,27 +362,38 @@ model Session {
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Provider {
-    id         String           @id @default(uuid())
-    name       String
-    type       ProviderType
-    verified   Boolean          @default(false)
-    userId     String?
-    user       User?            @relation(fields: [userId], references: [id])
-    tours      Tour[]
-    activities Activity[]
-    homestays  Homestay[]
-    payouts    ProviderPayout[]
-    createdAt  DateTime         @default(now()) @map("created_at")
-    updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at")
+model Onboarding {
+    id           String         @id @default(uuid())
+    providerType ProviderType[]
+    email        String
+    token        String         @unique
+    expiresAt    DateTime
+    completedAt  DateTime?
+    providerId   String?
+    metadata     Json?
+    createdAt    DateTime       @default(now()) @map("created_at")
+    updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at")
+
+    @@index([token])
+    @@index([email])
 }
 
-enum ProviderType {
-    PLATFORM
-    TOUR_VENDOR
-    ACTIVITY_VENDOR
-    HOMESTAY_HOST
-    LOCAL_BUDDY
+model Provider {
+    id            String           @id @default(uuid())
+    name          String
+    type          ProviderType[]
+    verified      Boolean          @default(false)
+    status        ProviderStatus   @default(PENDING)
+    contactNumber String
+    userId        String           @unique
+    createdAt     DateTime         @default(now()) @map("created_at")
+    updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
+    user          User             @relation(fields: [userId], references: [id])
+    activities    Activity[]
+    homestays     Homestay[]
+    vehicles      Vehicle[]
+    localGuides   LocalGuide[]
+    payouts       ProviderPayout[]
 }
 
 model Review {
@@ -120,13 +411,6 @@ model Review {
     @@unique([userId, targetType, targetId])
 }
 
-enum ReviewTarget {
-    TOUR
-    ACTIVITY
-    HOMESTAY
-    LOCAL_BUDDY
-}
-
 model TourItinerary {
     id        String @id @default(uuid())
     tourId    String
@@ -134,7 +418,19 @@ model TourItinerary {
     title     String
     details   Json?
 
-    tour Tour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+    tour Tour               @relation(fields: [tourId], references: [id], onDelete: Cascade)
+    pois TourItineraryPOI[]
+}
+
+model TourItineraryPOI {
+    id          String        @id @default(uuid())
+    itineraryId String
+    poiId       String
+    order       Int
+    itinerary   TourItinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+    poi         POI           @relation(fields: [poiId], references: [id], onDelete: Cascade)
+
+    @@unique([itineraryId, poiId, order])
 }
 
 model Tour {
@@ -145,18 +441,15 @@ model Tour {
     duration    Int
     imageUrls   String[]
     tags        String[]
-    maxCapacity Int?
+    maxCapacity Int             @default(10)
     isActive    Boolean         @default(true)
-    latitude    Float
-    longitude   Float
-    address     String
     about       String?
     included    String[]
     notIncluded String[]
     highlights  String[]
     brochure    String?
-    providerId  String
-    provider    Provider        @relation(fields: [providerId], references: [id])
+    address     Address?        @relation(fields: [addressId], references: [id])
+    addressId   String?
     itinerary   TourItinerary[]
     createdAt   DateTime        @default(now()) @map("created_at")
     updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at")
@@ -178,9 +471,6 @@ model Homestay {
     id          String         @id @default(uuid())
     name        String
     description String
-    latitude    Float
-    longitude   Float
-    address     String
     tags        String[]
     facilities  String[]
     imageUrls   String[]
@@ -189,6 +479,8 @@ model Homestay {
     isActive    Boolean        @default(true)
     providerId  String
     provider    Provider       @relation(fields: [providerId], references: [id])
+    address     Address?       @relation(fields: [addressId], references: [id])
+    addressId   String?
     rooms       HomestayRoom[]
     createdAt   DateTime       @default(now()) @map("created_at")
     updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at")
@@ -231,32 +523,31 @@ model Destinations {
 }
 
 model Booking {
-    id     String        @id @default(uuid())
-    userId String
-    status BookingStatus
-    source BookingSource @default(ONLINE)
-
-    user    User          @relation(fields: [userId], references: [id])
-    items   BookingItem[]
-    reviews Review[]
-    payment Payment[]
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    id        String        @id @default(uuid())
+    userId    String
+    status    BookingStatus
+    source    BookingSource @default(ONLINE)
+    user      User          @relation(fields: [userId], references: [id])
+    items     BookingItem[]
+    reviews   Review[]
+    payment   Payment[]
+    createdAt DateTime      @default(now()) @map("created_at")
+    updatedAt DateTime      @default(now()) @updatedAt @map("updated_at")
 }
 
 model BookingItem {
-    id          String      @id @default(uuid())
-    bookingId   String
-    productType ProductType
-    productId   String
-    startDate   DateTime?
-    endDate     DateTime?
-    quantity    Int
-    price       Int
-
-    booking Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-    guests  BookingGuest[]
+    id             String         @id @default(uuid())
+    bookingId      String
+    productType    ProductType
+    productId      String
+    startDate      DateTime?
+    endDate        DateTime?
+    quantity       Int
+    price          Int
+    permitRequired Boolean        @default(false)
+    booking        Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    guests         BookingGuest[]
+    permits        Permit[]
 }
 
 model BookingGuest {
@@ -268,36 +559,11 @@ model BookingGuest {
     age           Int
     gender        Gender
 
-    passportPhotoId String?
-    passportPhoto   Document? @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
-
-    identityProofId String?
-    identityProof   Document? @relation("IdentityProof", fields: [identityProofId], references: [id])
-
     bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+    permit      Permit?
 
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
-}
-
-enum ProductType {
-    TOUR
-    ACTIVITY
-    HOMESTAY_ROOM
-    LOCAL_BUDDY
-}
-
-enum BookingSource {
-    ONLINE
-    OFFLINE
-}
-
-enum BookingStatus {
-    CREATED
-    PAYMENT_PENDING
-    CONFIRMED
-    CANCELLED
-    REFUNDED
 }
 
 model Payment {
@@ -356,18 +622,6 @@ model ProviderPayout {
     updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 }
 
-enum RefundStatus {
-    INITIATED
-    PROCESSED
-    FAILED
-}
-
-enum PayoutStatus {
-    PENDING
-    PAID
-    FAILED
-}
-
 model CancellationPolicy {
     id          String      @id @default(uuid())
     productType ProductType
@@ -378,13 +632,6 @@ model CancellationPolicy {
     updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
 
     @@unique([productType, productId])
-}
-
-enum MethodEnum {
-    CARD
-    UPI
-    NETBANKING
-    WALLET
 }
 
 model WebhookEvent {
@@ -407,32 +654,38 @@ model WebhookEvent {
     @@index([paymentId])
 }
 
-enum PaymentProvider {
-    RAZORPAY
-    STRIPE
-}
-
-enum PaymentStatus {
-    CREATED
-    AUTHORIZED
-    CAPTURED
-    FAILED
-    REFUNDED
-}
-
 model Document {
-    id     String       @id @default(uuid())
-    userId String
-    type   DocumentType
-    url    String
+    id         String       @id @default(uuid())
+    userId     String?
+    type       DocumentType
+    url        String
+    fileName   String?
+    mimeType   String?
+    size       Int?
+    uploadedAt DateTime     @default(now())
 
-    user User @relation(fields: [userId], references: [id])
+    permitsAsPassport Permit[] @relation("PassportPhoto")
+    permitsAsIdentity Permit[] @relation("IdentityProof")
+    permitsAsDocument Permit[] @relation("PermitDocument")
 
-    passportPhotos BookingGuest[] @relation("PassportPhoto")
-    identityProofs BookingGuest[] @relation("IdentityProof")
+    deletedAt DateTime?
 
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+    @@index([userId, type])
+    @@index([deletedAt])
+}
+
+model FeatureFlag {
+    id          String      @id @default(uuid())
+    serviceType ServiceType @unique
+    enabled     Boolean     @default(true)
+    message     String? // Message to show when service is disabled
+    createdAt   DateTime    @default(now()) @map("created_at")
+    updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+
+    @@index([serviceType, enabled])
 }
 
 enum DocumentType {

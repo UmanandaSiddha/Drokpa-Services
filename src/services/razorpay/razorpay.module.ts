@@ -1,6 +1,5 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Razorpay from 'razorpay';
 import { RAZORPAY_CLIENT } from 'src/config/constants';
 import { RazorpayService } from './razorpay.service';
 
@@ -13,15 +12,25 @@ import { RazorpayService } from './razorpay.service';
 			useFactory: (
 				configService: ConfigService,
 			) => {
+				const keyId = configService.get<string>('RAZORPAY_KEY_ID');
+				const keySecret = configService.get<string>('RAZORPAY_KEY_SECRET');
+				
+				if (!keyId || !keySecret) {
+					const logger = new Logger('RazorpayModule');
+					logger.warn('Razorpay credentials not configured. Payment features will be disabled.');
+					return null;
+				}
+				
+				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				const Razorpay = require('razorpay');
 				return new Razorpay({
-					key_id: configService.get<string>('RAZORPAY_KEY_ID'),
-					key_secret:
-						configService.get<string>('RAZORPAY_KEY_SECRET'),
+					key_id: keyId,
+					key_secret: keySecret,
 				});
 			},
 		},
 		RazorpayService
 	],
-	exports: [RAZORPAY_CLIENT],
+	exports: [RAZORPAY_CLIENT, RazorpayService],
 })
 export class RazorpayModule { }

@@ -31,7 +31,7 @@ export class AuthService {
 	// --- Helper Functions ---
 
 	// Verify user by token
-	async validateUserByToken(token: string): Promise<User & { roles: UserRoleMap[] }> {
+	async validateUserByToken(token: string): Promise<User & { roles: UserRoleMap[]; providerId?: string }> {
 		try {
 			const secret = this.config.get<string>('ACCESS_TOKEN_SECRET');
 			const payload: { id: string } = await this.jwtService.verifyAsync(token, { secret });
@@ -39,12 +39,20 @@ export class AuthService {
 			const user = await this.databaseService.user.findUnique({
 				where: { id: payload.id },
 				include: {
-					roles: true
-				}
+					roles: true,
+					provider: {
+						select: {
+							id: true,
+						},
+					},
+				},
 			});
 			if (!user) throw new UnauthorizedException('Invalid user.');
 
-			return user;
+			return {
+				...user,
+				providerId: user.provider?.id,
+			};
 		} catch (err: any) {
 			if (err.name === 'TokenExpiredError') throw new UnauthorizedException('Token expired.');
 			throw new UnauthorizedException('Invalid token.');

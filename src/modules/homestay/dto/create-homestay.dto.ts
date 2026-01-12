@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsNumber, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class CreateHomestayDto {
     @IsString()
@@ -7,14 +7,9 @@ export class CreateHomestayDto {
     @IsString()
     description: string;
 
-    @IsNumber()
-    latitude: number;
-
-    @IsNumber()
-    longitude: number;
-
     @IsString()
-    address: string;
+    @IsOptional()
+    addressId?: string;
 
     @IsArray()
     tags: string[];
@@ -32,5 +27,6 @@ export class CreateHomestayDto {
     phoneNumber: string;
 
     @IsBoolean()
+    @IsOptional()
     isActive?: boolean;
 }

@@ -13,9 +13,9 @@ export class ToursController {
 
     @Post()
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.ADMIN, UserRole.VENDOR)
-    create(@getUser('id') userId: string, @Body() dto: CreateTourDto) {
-        return this.toursService.create(userId, dto);
+    @Roles(UserRole.ADMIN)
+    create(@Body() dto: CreateTourDto) {
+        return this.toursService.create(dto);
     }
 
     @Get()
@@ -42,7 +42,19 @@ export class ToursController {
 
     @Post(':id/itinerary')
     @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
     addItinerary(@Param('id') id: string, @Body() dto: AddItineraryDto) {
         return this.toursService.addItinerary(id, dto);
+    }
+
+    @Post('itinerary/:itineraryId/poi/:poiId')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    linkPOIToItinerary(
+        @Param('itineraryId') itineraryId: string,
+        @Param('poiId') poiId: string,
+        @Body('order') order: number,
+    ) {
+        return this.toursService.linkPOIToItinerary(itineraryId, poiId, order);
     }
 }

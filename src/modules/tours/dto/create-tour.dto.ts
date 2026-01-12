@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateTourDto {
     @IsString()
@@ -23,14 +23,9 @@ export class CreateTourDto {
     @IsInt()
     maxCapacity?: number;
 
-    @IsNumber()
-    latitude: number;
-
-    @IsNumber()
-    longitude: number;
-
     @IsString()
-    address: string;
+    @IsOptional()
+    addressId?: string;
 
     @IsOptional()
     @IsString()
@@ -45,6 +40,11 @@ export class CreateTourDto {
     @IsArray()
     highlights: string[];
 
+    @IsString()
+    @IsOptional()
+    brochure?: string;
+
     @IsBoolean()
+    @IsOptional()
     isActive?: boolean;
 }

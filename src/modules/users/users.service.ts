@@ -37,7 +37,7 @@ export class UserService {
             .include({
                 roles: true,
                 bookings: true,
-                providerProfile: true
+                provider: true
             })
             .pagination();
 
@@ -93,7 +93,7 @@ export class UserService {
                 include: {
                     roles: true,
                     bookings: true,
-                    providerProfile: true
+                    provider: true
                 }
             });
             if (!user) throw new BadRequestException('User not found');
@@ -108,17 +108,17 @@ export class UserService {
     async updateProfile(dto: ProfileDto, userId: string) {
         const { firstName, lastName, gender, dateOfBirth, avatarUrl } = dto;
 
-        const newUser = await this.databaseService.user.upsert({
+        const user = await this.databaseService.user.findUnique({
             where: { id: userId },
-            create: {
-                id: userId,
-                firstName,
-                lastName,
-                ...(gender && { gender: gender as Gender }),
-                ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
-                ...(avatarUrl && { avatarUrl }),
-            },
-            update: {
+        });
+
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+
+        const updatedUser = await this.databaseService.user.update({
+            where: { id: userId },
+            data: {
                 ...(firstName && { firstName }),
                 ...(lastName && { lastName }),
                 ...(gender && { gender: gender as Gender }),
@@ -127,6 +127,6 @@ export class UserService {
             },
         });
 
-        return { message: 'Profile updated successfully!', data: newUser };
+        return { message: 'Profile updated successfully!', data: updatedUser };
     }
 }
