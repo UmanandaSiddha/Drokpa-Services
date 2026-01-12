@@ -45,19 +45,20 @@ export class AddressService {
     }
 
     async getNearbyAddresses(latitude: number, longitude: number, radiusKm: number = 10) {
-        // For now, simple distance calculation
-        // In production with PostGIS, use ST_DWithin for accurate queries
-        const allAddresses = await this.databaseService.address.findMany();
+        const radiusMeters = radiusKm * 1000;
 
-        const nearbyAddresses = allAddresses.filter(address => {
-            const distance = this.calculateDistance(
-                latitude,
-                longitude,
-                address.latitude,
-                address.longitude,
-            );
-            return distance <= radiusKm;
-        });
+        const nearbyAddresses = await this.databaseService.$queryRaw`
+            SELECT * FROM "Address"
+            WHERE ST_DWithin(
+                ST_Point(longitude, latitude)::geography,
+                ST_Point(${longitude}, ${latitude})::geography,
+                ${radiusMeters}
+            )
+            ORDER BY ST_Distance(
+                ST_Point(longitude, latitude)::geography,
+                ST_Point(${longitude}, ${latitude})::geography
+            )
+        `;
 
         return nearbyAddresses;
     }
