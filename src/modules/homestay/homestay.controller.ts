@@ -15,9 +15,9 @@ export class HomestayController {
     @Roles(UserRole.HOST)
     createHomestay(
         @Body() dto: CreateHomestayDto,
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
     ) {
-        return this.homestayService.createHomestay(providerId, dto);
+        return this.homestayService.createHomestay(userId, dto);
     }
 
     @Get()

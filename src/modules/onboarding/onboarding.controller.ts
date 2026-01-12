@@ -27,9 +27,9 @@ export class OnboardingController {
     @UseGuards(AuthGuard)
     completeOnboarding(
         @Body() dto: CompleteOnboardingDto,
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
     ) {
-        return this.onboardingService.completeOnboarding(dto, providerId);
+        return this.onboardingService.completeOnboarding(dto, userId);
     }
 
     @Get('pending')

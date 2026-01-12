@@ -8,13 +8,30 @@ export class HomestayService {
         private readonly databaseService: DatabaseService
     ) { }
 
-    async createHomestay(providerId: string, dto: CreateHomestayDto) {
-        return this.databaseService.homestay.create({
+    async createHomestay(userId: string, dto: CreateHomestayDto) {
+        const provider = await this.databaseService.provider.findUnique({
+            where: { userId },
+        });
+        if (!provider) {
+            throw new NotFoundException('Provider not found');
+        }
+
+        const homestay = await this.databaseService.homestay.create({
             data: {
-                ...dto,
-                providerId,
+                name: dto.name,
+                description: dto.description,
+                tags: dto.tags,
+                facilities: dto.facilities,
+                imageUrls: dto.imageUrls,
+                email: dto.email,
+                phoneNumber: dto.phoneNumber,
+                providerId: provider.id,
             },
         });
+
+        console.log(homestay);
+
+        return homestay;
     }
 
     async getProviderHomestays(providerId: string) {

@@ -241,6 +241,35 @@ export class AuthService {
 			data: payload
 		});
 
+		// Check if there's a pending onboarding invite for this email
+		// If user has firstName/lastName, we can use that as provider name
+		// Otherwise, onboarding will need to be completed manually
+		const onboarding = await this.databaseService.onboarding.findFirst({
+			where: {
+				email,
+				completedAt: null,
+				expiresAt: { gt: new Date() },
+			},
+		});
+
+		// If onboarding exists but we don't have enough info, we'll let them complete it manually
+		// For now, we'll just mark that onboarding exists (they can complete via /onboarding/complete)
+		let providerCreated = false;
+		if (onboarding) {
+			// Check if user already has provider
+			const existingProvider = await this.databaseService.provider.findUnique({
+				where: { userId: user.id },
+			});
+
+			if (!existingProvider) {
+				// Provider will be created when user completes onboarding with name/contactNumber
+				// For now, we just note that onboarding is pending
+				providerCreated = false;
+			} else {
+				providerCreated = true;
+			}
+		}
+
 		const session = await this.databaseService.session.create({
 			data: {
 				userId: user.id,
@@ -264,6 +293,25 @@ export class AuthService {
 		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
 		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
+		// Return response with onboarding status
+		const response: any = {
+			message: 'Email verified successfully',
+			user: {
+				id: updatedUser.id,
+				email: updatedUser.email,
+				isVerified: updatedUser.isVerified,
+			},
+			accessToken,
+			clientRefreshToken,
+		};
+
+		// If onboarding exists and provider not created, inform user they need to complete it
+		if (onboarding && !providerCreated) {
+			response.onboardingPending = true;
+			response.onboardingToken = onboarding.token;
+			response.message = 'Email verified. Please complete your provider onboarding using the token.';
+		}
+
 		// Send verification success email (production only)
 		await this.emailService.queueEmail({
 			to: email,
@@ -276,7 +324,7 @@ export class AuthService {
 			`,
 		});
 
-		return { message: 'User verified successfully', data: updatedUser, accessToken, clientRefreshToken };
+		return response;
 	}
 
 	async refreshToken(req: Request, res: Response) {
