@@ -40,14 +40,7 @@ enum ProviderType {
     HOMESTAY_HOST
     VEHICLE_PARTNER
     LOCAL_GUIDE
-}
-
-enum ProductType {
-    TOUR
-    ACTIVITY
-    HOMESTAY
-    VEHICLE
-    LOCAL_GUIDE
+    ILP_VENDOR
 }
 
 enum BookingSource {
@@ -106,14 +99,6 @@ enum PermitDocumentType {
     SIGNATURE
 }
 
-enum ReviewTarget {
-    TOUR
-    ACTIVITY
-    HOMESTAY
-    VEHICLE
-    LOCAL_GUIDE
-}
-
 enum RefundStatus {
     INITIATED
     PROCESSED
@@ -140,14 +125,9 @@ enum BucketListStatus {
     EXPIRED
 }
 
-enum ServiceType {
-    TOUR_BOOKING
-    HOMESTAY_BOOKING
-    VEHICLE_BOOKING
-    LOCAL_GUIDE_BOOKING
-    ACTIVITY_BOOKING
-}
+// ALL Models
 
+// Address Model -> Stores PostGIS location and raw address fields with coordinates
 model Address {
     id         String                                @id @default(uuid())
     street     String?
@@ -158,6 +138,8 @@ model Address {
     latitude   Float
     longitude  Float
     location   Unsupported("geography(Point,4326)")?
+    createdAt  DateTime                              @default(now()) @map("created_at")
+    updatedAt  DateTime                              @default(now()) @updatedAt @map("updated_at")
 
     tours       Tour[]
     homestays   Homestay[]
@@ -165,10 +147,10 @@ model Address {
     vehicles    Vehicle[]
     localGuides LocalGuide[]
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    @@unique([latitude, longitude])
 }
 
+// Point of Interest Model -> 
 model POI {
     id          String   @id @default(uuid())
     name        String
@@ -177,13 +159,14 @@ model POI {
     imageUrls   String[]
     latitude    Float
     longitude   Float
-    address     Address? @relation(fields: [addressId], references: [id])
     addressId   String?
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
+    address            Address?           @relation(fields: [addressId], references: [id])
     tourItineraryItems TourItineraryPOI[]
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    @@index([addressId])
 }
 
 model BucketList {
@@ -200,43 +183,52 @@ model BucketList {
 }
 
 model BucketListItem {
-    id           String      @id @default(uuid())
+    id           String       @id @default(uuid())
     bucketListId String
-    productType  ProductType
+    productType  ProviderType
     productId    String
-    quantity     Int         @default(1)
+    quantity     Int          @default(1)
     startDate    DateTime?
     endDate      DateTime?
     metadata     Json?
-    bucketList   BucketList  @relation(fields: [bucketListId], references: [id], onDelete: Cascade)
+    createdAt    DateTime     @default(now()) @map("created_at")
 
-    createdAt DateTime @default(now()) @map("created_at")
+    tour       Tour?      @relation(fields: [productId], references: [id], map: "BucketListItem_tour_fkey")
+    homestay   Homestay?  @relation(fields: [productId], references: [id], map: "BucketListItem_homestay_fkey")
+    bucketList BucketList @relation(fields: [bucketListId], references: [id], onDelete: Cascade)
+
+    @@index([productId])
+    @@index([productType, productId])
 }
 
+// Not for V1
 model Vehicle {
-    id              String               @id @default(uuid())
+    id              String      @id @default(uuid())
     name            String
     type            VehicleType
     brand           String?
     model           String?
-    registrationNo  String               @unique
+    registrationNo  String      @unique
     imageUrls       String[]
     basePricePerDay Int
-    bookingMode     VehicleBookingMode[]
-    isActive        Boolean              @default(true)
+    isActive        Boolean     @default(true)
     providerId      String
-    provider        Provider             @relation(fields: [providerId], references: [id])
-    address         Address?             @relation(fields: [addressId], references: [id])
     addressId       String?
+    createdAt       DateTime    @default(now()) @map("created_at")
+    updatedAt       DateTime    @default(now()) @updatedAt @map("updated_at")
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    bookingMode VehicleBookingMode[]
+    provider    Provider             @relation(fields: [providerId], references: [id])
+    address     Address?             @relation(fields: [addressId], references: [id])
+
+    @@index([providerId])
+    @@index([addressId])
 }
 
+// Not for V1
 model LocalGuide {
     id              String   @id @default(uuid())
     providerId      String
-    provider        Provider @relation(fields: [providerId], references: [id])
     bio             String?
     languages       String[]
     specialties     String[]
@@ -245,56 +237,66 @@ model LocalGuide {
     rating          Float?   @default(0)
     totalReviews    Int      @default(0)
     isActive        Boolean  @default(true)
-    address         Address? @relation(fields: [addressId], references: [id])
     addressId       String?
+    createdAt       DateTime @default(now()) @map("created_at")
+    updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    provider Provider @relation(fields: [providerId], references: [id])
+    address  Address? @relation(fields: [addressId], references: [id])
+
+    @@index([providerId])
+    @@index([addressId])
 }
 
 model Permit {
-    id               String        @id @default(uuid())
+    id               String       @id @default(uuid())
     bookingItemId    String?
-    bookingItem      BookingItem?  @relation(fields: [bookingItemId], references: [id])
-    participantId    String?       @unique
-    participant      BookingGuest? @relation(fields: [participantId], references: [id])
-    status           PermitStatus  @default(REQUIRED)
+    participantId    String?      @unique
+    status           PermitStatus @default(REQUIRED)
     passportPhotoId  String?
-    passportPhoto    Document?     @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
     identityProofId  String?
-    identityProof    Document?     @relation("IdentityProof", fields: [identityProofId], references: [id])
     permitDocumentId String?
-    permitDocument   Document?     @relation("PermitDocument", fields: [permitDocumentId], references: [id])
     submittedAt      DateTime?
     approvedAt       DateTime?
     rejectedAt       DateTime?
     rejectionReason  String?
+    createdAt        DateTime     @default(now()) @map("created_at")
+    updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at")
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    participant    BookingGuest? @relation(fields: [participantId], references: [id])
+    bookingItem    BookingItem?  @relation(fields: [bookingItemId], references: [id])
+    permitDocument Document?     @relation("PermitDocument", fields: [permitDocumentId], references: [id])
+    identityProof  Document?     @relation("IdentityProof", fields: [identityProofId], references: [id])
+    passportPhoto  Document?     @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
 
     @@index([bookingItemId])
     @@index([status])
+    @@index([participantId])
 }
 
 model User {
-    id               String    @id @default(uuid())
-    email            String    @unique
-    firstName        String
-    lastName         String
-    passwordHash     String?
-    isVerified       Boolean   @default(false)
-    avatarUrl        String?
-    gender           Gender?
-    dateOfBirth      DateTime?
-    lastLogin        DateTime?
-    customerId       String?
-    createdAt        DateTime  @default(now()) @map("created_at")
-    updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
-    oneTimePassword  String?
-    oneTimeExpire    DateTime?
-    resetToken       String?
-    resetTokenExpire DateTime?
+    id                      String    @id @default(uuid())
+    email                   String    @unique
+    firstName               String
+    lastName                String
+    passwordHash            String?
+    isVerified              Boolean   @default(false)
+    isOnline                Boolean   @default(false)
+    isDisabled              Boolean   @default(false)
+    avatarUrl               String?
+    gender                  Gender?
+    dateOfBirth             DateTime?
+    timezone                String?
+    notificationPreferences Json?
+    lastLogin               DateTime?
+    lastSeen                DateTime?
+    customerId              String?
+    createdAt               DateTime  @default(now()) @map("created_at")
+    updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
+    oneTimePassword         String?
+    oneTimeExpire           DateTime?
+    resetToken              String?
+    resetTokenExpire        DateTime?
 
     provider       Provider?
     roles          UserRoleMap[]
@@ -304,13 +306,17 @@ model User {
     reviews        Review[]
     memories       Memories[]
     bucketLists    BucketList[]
+
+    @@index([email])
+    @@index([isDisabled, isVerified])
 }
 
 model UserRoleMap {
     id     String   @id @default(uuid())
     userId String
     role   UserRole
-    user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([userId, role])
 }
@@ -320,7 +326,8 @@ model AuthIdentity {
     userId     String
     provider   AuthProvider
     providerId String
-    user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([provider, providerId])
 }
@@ -330,7 +337,11 @@ model Session {
     userId       String
     refreshToken String
     expiresAt    DateTime
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([refreshToken])
+    @@index([userId])
 }
 
 model Onboarding {
@@ -347,39 +358,102 @@ model Onboarding {
 
     @@index([token])
     @@index([email])
+    @@index([token, expiresAt])
 }
 
 model Provider {
-    id            String           @id @default(uuid())
+    id            String         @id @default(uuid())
     name          String
     type          ProviderType[]
-    verified      Boolean          @default(false)
-    status        ProviderStatus   @default(PENDING)
+    verified      Boolean        @default(false)
+    status        ProviderStatus @default(PENDING)
     contactNumber String
-    userId        String           @unique
-    createdAt     DateTime         @default(now()) @map("created_at")
-    updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
-    user          User             @relation(fields: [userId], references: [id])
-    activities    Activity[]
-    homestays     Homestay[]
-    vehicles      Vehicle[]
-    localGuides   LocalGuide[]
-    payouts       ProviderPayout[]
+    userId        String         @unique
+    createdAt     DateTime       @default(now()) @map("created_at")
+    updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
+
+    user        User             @relation(fields: [userId], references: [id])
+    tours       Tour[]
+    activities  Activity[]
+    homestays   Homestay[]
+    vehicles    Vehicle[]
+    localGuides LocalGuide[]
+    payouts     ProviderPayout[]
+
+    @@index([status, verified])
 }
 
 model Review {
     id         String       @id @default(uuid())
     userId     String
-    targetType ReviewTarget
+    targetType ProviderType
     targetId   String
-    rating     Int
-    comment    String?
+    rating     Int          @db.SmallInt // 1-5
+    comment    String?      @db.Text
+    bookingId  String?
+    createdAt  DateTime     @default(now()) @map("created_at")
+    updatedAt  DateTime     @default(now()) @updatedAt @map("updated_at")
 
-    bookingId String?
-    booking   Booking? @relation(fields: [bookingId], references: [id])
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    booking  Booking?  @relation(fields: [bookingId], references: [id])
+    user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    tour     Tour?     @relation(fields: [targetId], references: [id], map: "Review_tour_fkey")
+    homestay Homestay? @relation(fields: [targetId], references: [id], map: "Review_homestay_fkey")
 
     @@unique([userId, targetType, targetId])
+    @@index([targetType, targetId])
+    @@index([rating])
+}
+
+model Tag {
+    id        String   @id @default(uuid())
+    label     String   @unique
+    color     String
+    icon      String?
+    category  String? // "tour", "homestay", "activity"
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+    tours     TourTag[]
+    homestays HomestayTag[]
+}
+
+model TourTag {
+    tourId String
+    tagId  String
+    tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
+    tag    Tag    @relation(fields: [tagId], references: [id])
+
+    @@id([tourId, tagId])
+}
+
+model HomestayTag {
+    homestayId String
+    tagId      String
+    homestay   Homestay @relation(fields: [homestayId], references: [id], onDelete: Cascade)
+    tag        Tag      @relation(fields: [tagId], references: [id])
+
+    @@id([homestayId, tagId])
+}
+
+model Facility {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    icon        String
+    description String?
+    category    String?
+    createdAt   DateTime @default(now()) @map("created_at")
+    updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+    homestays HomestayFacility[]
+}
+
+model HomestayFacility {
+    homestayId String
+    facilityId String
+    homestay   Homestay @relation(fields: [homestayId], references: [id], onDelete: Cascade)
+    facility   Facility @relation(fields: [facilityId], references: [id])
+
+    @@id([homestayId, facilityId])
 }
 
 model TourItinerary {
@@ -391,41 +465,60 @@ model TourItinerary {
 
     tour Tour               @relation(fields: [tourId], references: [id], onDelete: Cascade)
     pois TourItineraryPOI[]
+
+    @@index([tourId])
 }
 
 model TourItineraryPOI {
-    id          String        @id @default(uuid())
+    id          String @id @default(uuid())
     itineraryId String
     poiId       String
     order       Int
-    itinerary   TourItinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-    poi         POI           @relation(fields: [poiId], references: [id], onDelete: Cascade)
+
+    itinerary TourItinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+    poi       POI           @relation(fields: [poiId], references: [id], onDelete: Cascade)
 
     @@unique([itineraryId, poiId, order])
+    @@index([itineraryId])
+    @@index([poiId])
 }
 
 model Tour {
-    id          String          @id @default(uuid())
-    title       String
-    description String
-    price       Int
-    duration    Int
-    imageUrls   String[]
-    tags        String[]
-    maxCapacity Int             @default(10)
-    isActive    Boolean         @default(true)
-    about       String?
-    included    String[]
-    notIncluded String[]
-    highlights  String[]
-    brochure    String?
-    address     Address?        @relation(fields: [addressId], references: [id])
-    addressId   String?
-    itinerary   TourItinerary[]
-    createdAt   DateTime        @default(now()) @map("created_at")
-    updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at")
+    id           String   @id @default(uuid())
+    title        String
+    description  String
+    basePrice    Int // Original price
+    discount     Int      @default(0) // Percentage discount (0-100)
+    finalPrice   Int // Actual selling price (can be manually adjusted)
+    duration     Int
+    imageUrls    String[]
+    maxCapacity  Int      @default(10)
+    rating       Float?   @default(0)
+    totalReviews Int      @default(0)
+    isActive     Boolean  @default(true)
+    about        String?
+    included     String[]
+    notIncluded  String[]
+    highlights   String[]
+    brochure     String?
+    addressId    String?
+    providerId   String?
+    createdAt    DateTime @default(now()) @map("created_at")
+    updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+    reviews         Review[]
+    tags            TourTag[]
+    itinerary       TourItinerary[]
+    bucketListItems BucketListItem[]
+    address         Address?         @relation(fields: [addressId], references: [id])
+    provider        Provider?        @relation(fields: [providerId], references: [id])
+
+    @@index([providerId])
+    @@index([isActive, rating])
+    @@index([addressId])
 }
 
+// Not for V1
 model Activity {
     id          String   @id @default(uuid())
     title       String
@@ -433,51 +526,107 @@ model Activity {
     price       Int
     duration    Int
     providerId  String
-    provider    Provider @relation(fields: [providerId], references: [id])
     createdAt   DateTime @default(now()) @map("created_at")
     updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+    provider Provider @relation(fields: [providerId], references: [id])
+
+    @@index([providerId])
+}
+
+enum BookingCriteria {
+    PER_PERSON
+    PER_NIGHT
+    HYBRID
 }
 
 model Homestay {
-    id          String         @id @default(uuid())
-    name        String
-    description String
-    tags        String[]
-    facilities  String[]
-    imageUrls   String[]
-    email       String
-    phoneNumber String
-    isActive    Boolean        @default(true)
-    providerId  String
-    provider    Provider       @relation(fields: [providerId], references: [id])
-    address     Address?       @relation(fields: [addressId], references: [id])
-    addressId   String?
-    rooms       HomestayRoom[]
-    createdAt   DateTime       @default(now()) @map("created_at")
-    updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at")
+    id              String          @id @default(uuid())
+    name            String
+    description     String
+    houseRules      String[]
+    safetyNSecurity String[]
+    imageUrls       String[]
+    displayPrice    Int? // "Starting from ₹X" for UI
+    rating          Float?          @default(0)
+    totalReviews    Int             @default(0)
+    bookingCriteria BookingCriteria @default(PER_NIGHT)
+    email           String
+    phoneNumber     String
+    isActive        Boolean         @default(true)
+    providerId      String
+    addressId       String?
+    createdAt       DateTime        @default(now()) @map("created_at")
+    updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
+
+    reviews         Review[]
+    facilities      HomestayFacility[]
+    tags            HomestayTag[]
+    rooms           HomestayRoom[]
+    bucketListItems BucketListItem[]
+    address         Address?           @relation(fields: [addressId], references: [id])
+    provider        Provider           @relation(fields: [providerId], references: [id])
+
+    @@index([providerId])
+    @@index([addressId])
+    @@index([isActive, rating])
 }
 
 model HomestayRoom {
-    id           String             @id @default(uuid())
-    homestayId   String
-    name         String
-    capacity     Int
-    basePrice    Int
-    totalRooms   Int
+    id              String          @id @default(uuid())
+    homestayId      String
+    name            String
+    description     String?
+    capacity        Int
+    basePrice       Int
+    discount        Int             @default(0)
+    finalPrice      Int // Actual selling price after discount + rounding
+    bookingCriteria BookingCriteria @default(PER_NIGHT)
+    totalRooms      Int
+    amenities       String[] // Or make it Json[]
+    imageUrls       String[]
+    isActive        Boolean         @default(true)
+    createdAt       DateTime        @default(now()) @map("created_at")
+    updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
+
     homestay     Homestay           @relation(fields: [homestayId], references: [id])
     availability RoomAvailability[]
+    bookings     RoomBooking[]
+
+    @@index([homestayId, isActive])
 }
 
 model RoomAvailability {
-    id        String       @id @default(uuid())
+    id        String   @id @default(uuid())
     roomId    String
     date      DateTime
     available Int
-    room      HomestayRoom @relation(fields: [roomId], references: [id])
+
+    room HomestayRoom @relation(fields: [roomId], references: [id])
 
     @@unique([roomId, date])
+    @@index([date])
 }
 
+model RoomBooking {
+    id              String   @id @default(uuid())
+    bookingItemId   String   @unique // One room booking per booking item
+    roomId          String
+    checkIn         DateTime
+    checkOut        DateTime
+    guests          Int
+    specialRequests String?  @db.Text
+    createdAt       DateTime @default(now()) @map("created_at")
+    updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+    room        HomestayRoom @relation(fields: [roomId], references: [id])
+    bookingItem BookingItem  @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+
+    @@index([roomId, checkIn, checkOut])
+    @@index([checkIn, checkOut])
+}
+
+// Not for V1
 model Destinations {
     id          String   @id @default(uuid())
     name        String
@@ -494,47 +643,93 @@ model Destinations {
 }
 
 model Booking {
-    id        String        @id @default(uuid())
-    userId    String
-    status    BookingStatus
-    source    BookingSource @default(ONLINE)
-    user      User          @relation(fields: [userId], references: [id])
-    items     BookingItem[]
-    reviews   Review[]
-    payment   Payment[]
-    createdAt DateTime      @default(now()) @map("created_at")
-    updatedAt DateTime      @default(now()) @updatedAt @map("updated_at")
+    id                 String        @id @default(uuid())
+    userId             String
+    status             BookingStatus
+    source             BookingSource @default(ONLINE)
+    totalAmount        Int? // Add total amount
+    paidAmount         Int? // Add paid amount
+    confirmedAt        DateTime? // When confirmed
+    cancelledAt        DateTime? // When cancelled
+    cancellationReason String?
+    completedAt        DateTime? // When completed
+    expiresAt          DateTime? // Payment expiry for AWAITING_PAYMENT
+    metadata           Json? // Additional booking data
+    createdAt          DateTime      @default(now()) @map("created_at")
+    updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
+
+    reviews Review[]
+    payment Payment[]
+    items   BookingItem[]
+    user    User          @relation(fields: [userId], references: [id])
+
+    @@index([userId, status])
+    @@index([status, expiresAt])
+    @@index([createdAt])
 }
 
 model BookingItem {
-    id             String         @id @default(uuid())
+    id             String       @id @default(uuid())
     bookingId      String
-    productType    ProductType
+    productType    ProviderType
     productId      String
     startDate      DateTime?
     endDate        DateTime?
     quantity       Int
-    price          Int
-    permitRequired Boolean        @default(false)
-    booking        Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-    guests         BookingGuest[]
-    permits        Permit[]
+    basePrice      Int // Original unit price (snapshot)
+    discount       Int // Discount applied (%)
+    finalPrice     Int // Actual unit price charged (can differ from basePrice - discount)
+    totalAmount    Int // finalPrice * quantity (redundant but useful for auditing)
+    permitRequired Boolean      @default(false)
+    metadata       Json? // Room details, tour preferences, etc.
+
+    guests  BookingGuest[]
+    rooms   RoomBooking?
+    permits Permit[]
+    booking Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+    @@index([bookingId])
+    @@index([productType, productId])
 }
 
 model BookingGuest {
-    id            String @id @default(uuid())
+    id            String   @id @default(uuid())
     bookingItemId String
-
     fullName      String
+    email         String? // Add email
     contactNumber String
     age           Int
     gender        Gender
+    createdAt     DateTime @default(now()) @map("created_at")
+    updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
-    bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
     permit      Permit?
+    bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    @@index([bookingItemId])
+}
+
+model TemporaryUpload {
+    id             String    @id @default(uuid())
+    userId         String?
+    sessionId      String? // For non-authenticated users
+    s3Key          String    @unique
+    s3Bucket       String
+    fileName       String
+    mimeType       String
+    size           Int?
+    uploadedAt     DateTime  @default(now())
+    expiresAt      DateTime // Auto-delete after X hours
+    associatedWith String? // "booking", "permit", "onboarding"
+    referenceId    String? // bookingId, permitId, etc.
+    isUsed         Boolean   @default(false)
+    deletedAt      DateTime?
+    createdAt      DateTime  @default(now()) @map("created_at")
+
+    @@index([expiresAt, deletedAt])
+    @@index([userId, associatedWith])
+    @@index([sessionId, expiresAt])
+    @@index([isUsed, expiresAt])
 }
 
 model Payment {
@@ -543,9 +738,9 @@ model Payment {
     currency          String          @default("INR")
     status            PaymentStatus
     provider          PaymentProvider
-    providerOrderId   String?
-    providerPaymentId String?
-    notes             String?
+    providerOrderId   String?         @unique
+    providerPaymentId String?         @unique
+    notes             String?         @db.Text
     method            MethodEnum?
     cardToken         String?
     cardLast4         String?
@@ -557,26 +752,39 @@ model Payment {
     bankName          String?
     nickname          String?
     bookingId         String?
-    booking           Booking?        @relation(fields: [bookingId], references: [id])
+    failureReason     String? // Add failure reason
+    capturedAt        DateTime? // When payment captured
+    failedAt          DateTime? // When payment failed
+    createdAt         DateTime        @default(now()) @map("created_at")
+    updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at")
 
     refunds Refund[]
     payouts ProviderPayout[]
     webhook WebhookEvent[]
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+    booking Booking?         @relation(fields: [bookingId], references: [id])
 
     @@index([bookingId])
+    @@index([status])
+    @@index([providerOrderId])
 }
 
 model Refund {
-    id        String       @id @default(uuid())
-    paymentId String
-    amount    Int
-    reason    String?
-    status    RefundStatus
-    payment   Payment      @relation(fields: [paymentId], references: [id])
-    createdAt DateTime     @default(now())
+    id               String       @id @default(uuid())
+    paymentId        String
+    amount           Int
+    reason           String?      @db.Text
+    status           RefundStatus
+    providerRefundId String?      @unique
+    processedAt      DateTime?
+    failedAt         DateTime?
+    failureReason    String?
+    createdAt        DateTime     @default(now()) @map("created_at")
+    updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at")
+
+    payment Payment @relation(fields: [paymentId], references: [id])
+
+    @@index([paymentId])
+    @@index([status])
 }
 
 model ProviderPayout {
@@ -587,20 +795,21 @@ model ProviderPayout {
     periodStart DateTime
     periodEnd   DateTime
     status      PayoutStatus
-    provider    Provider     @relation(fields: [providerId], references: [id])
-    payment     Payment?     @relation(fields: [paymentId], references: [id])
     createdAt   DateTime     @default(now()) @map("created_at")
     updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
+
+    payment  Payment? @relation(fields: [paymentId], references: [id])
+    provider Provider @relation(fields: [providerId], references: [id])
 }
 
 model CancellationPolicy {
-    id          String      @id @default(uuid())
-    productType ProductType
+    id          String       @id @default(uuid())
+    productType ProviderType
     productId   String
     hoursBefore Int
     refundPct   Int
-    createdAt   DateTime    @default(now()) @map("created_at")
-    updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+    createdAt   DateTime     @default(now()) @map("created_at")
+    updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 
     @@unique([productType, productId])
 }
@@ -617,44 +826,83 @@ model WebhookEvent {
     processedAt     DateTime?
     notes           String?
     paymentId       String?
-    payment         Payment?        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
     createdAt       DateTime        @default(now()) @map("created_at")
     updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
+
+    payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
     @@index([eventType])
     @@index([paymentId])
 }
 
 model Document {
-    id         String       @id @default(uuid())
-    userId     String?
-    type       DocumentType
-    url        String
-    fileName   String?
-    mimeType   String?
-    size       Int?
-    uploadedAt DateTime     @default(now())
+    id           String       @id @default(uuid())
+    userId       String?
+    type         DocumentType
+    url          String // Full S3 URL
+    s3Key        String? // Add S3 key for deletion
+    s3Bucket     String? // Add bucket name
+    fileName     String?
+    mimeType     String?
+    size         Int?
+    uploadedAt   DateTime     @default(now())
+    deletedAt    DateTime?
+    tempUploadId String? // Link to temporary upload
+    createdAt    DateTime     @default(now()) @map("created_at")
+    updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at")
 
     permitsAsPassport Permit[] @relation("PassportPhoto")
     permitsAsIdentity Permit[] @relation("IdentityProof")
     permitsAsDocument Permit[] @relation("PermitDocument")
 
-    deletedAt DateTime?
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
-
     @@index([userId, type])
     @@index([deletedAt])
+    @@index([s3Key])
+    @@index([tempUploadId])
+}
+
+model ServiceWaitlist {
+    id          String       @id @default(uuid())
+    email       String
+    name        String?
+    phoneNumber String?
+    serviceType ProviderType
+    location    String? // User's location
+    notified    Boolean      @default(false)
+    notifiedAt  DateTime?
+    metadata    Json? // Additional preferences
+    createdAt   DateTime     @default(now()) @map("created_at")
+    updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
+
+    @@unique([email, serviceType])
+    @@index([serviceType, notified])
+}
+
+model CommunityJoinRequest {
+    id          String    @id @default(uuid())
+    fullName    String
+    email       String    @unique
+    phoneNumber String
+    location    String?
+    interests   String[] // What they're interested in
+    message     String?   @db.Text
+    contacted   Boolean   @default(false)
+    contactedAt DateTime?
+    notes       String?   @db.Text // Admin notes
+    createdAt   DateTime  @default(now()) @map("created_at")
+    updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+
+    @@index([contacted])
+    @@index([createdAt])
 }
 
 model FeatureFlag {
-    id          String      @id @default(uuid())
-    serviceType ServiceType @unique
-    enabled     Boolean     @default(true)
+    id          String       @id @default(uuid())
+    serviceType ProviderType @unique
+    enabled     Boolean      @default(true)
     message     String? // Message to show when service is disabled
-    createdAt   DateTime    @default(now()) @map("created_at")
-    updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+    createdAt   DateTime     @default(now()) @map("created_at")
+    updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 
     @@index([serviceType, enabled])
 }
@@ -665,6 +913,7 @@ enum DocumentType {
     PERMIT
 }
 
+// Not for V1
 model AppBanner {
     id        String   @id @default(uuid())
     name      String
@@ -678,6 +927,7 @@ enum ConfigType {
     HOME_PAGE
 }
 
+// Not for V1
 model AppUiConfig {
     id        String     @id @default(uuid())
     name      String
@@ -687,13 +937,15 @@ model AppUiConfig {
     updatedAt DateTime   @default(now()) @updatedAt @map("updated_at")
 }
 
+// Not for V1
 model Memories {
     id          String   @id @default(uuid())
     title       String
     description String?
     imageUrls   String[]
     userId      String
-    user        User     @relation(fields: [userId], references: [id])
     createdAt   DateTime @default(now()) @map("created_at")
     updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+    user User @relation(fields: [userId], references: [id])
 }
