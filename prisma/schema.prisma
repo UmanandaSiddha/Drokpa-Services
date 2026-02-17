@@ -225,7 +225,6 @@ model Vehicle {
     @@index([addressId])
 }
 
-// Not for V1
 model LocalGuide {
     id              String   @id @default(uuid())
     providerId      String
@@ -243,6 +242,7 @@ model LocalGuide {
 
     provider Provider @relation(fields: [providerId], references: [id])
     address  Address? @relation(fields: [addressId], references: [id])
+    tours    Tour[]
 
     @@index([providerId])
     @@index([addressId])
@@ -483,19 +483,25 @@ model TourItineraryPOI {
     @@index([poiId])
 }
 
+enum TourType {
+    TOUR
+    TREK
+}
+
 model Tour {
-    id           String   @id @default(uuid())
+    id           String      @id @default(uuid())
     title        String
     description  String
+    type         TourType    @default(TOUR)
     basePrice    Int // Original price
-    discount     Int      @default(0) // Percentage discount (0-100)
+    discount     Int         @default(0) // Percentage discount (0-100)
     finalPrice   Int // Actual selling price (can be manually adjusted)
     duration     Int
     imageUrls    String[]
-    maxCapacity  Int      @default(10)
-    rating       Float?   @default(0)
-    totalReviews Int      @default(0)
-    isActive     Boolean  @default(true)
+    maxCapacity  Int         @default(10)
+    rating       Float?      @default(0)
+    totalReviews Int         @default(0)
+    isActive     Boolean     @default(true)
     about        String?
     included     String[]
     notIncluded  String[]
@@ -503,8 +509,10 @@ model Tour {
     brochure     String?
     addressId    String?
     providerId   String?
-    createdAt    DateTime @default(now()) @map("created_at")
-    updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+    guideId      String?
+    guide        LocalGuide? @relation(fields: [guideId], references: [id])
+    createdAt    DateTime    @default(now()) @map("created_at")
+    updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at")
 
     reviews         Review[]
     tags            TourTag[]
@@ -693,15 +701,16 @@ model BookingItem {
 }
 
 model BookingGuest {
-    id            String   @id @default(uuid())
+    id            String    @id @default(uuid())
     bookingItemId String
     fullName      String
     email         String? // Add email
-    contactNumber String
     age           Int
+    contactNumber String
     gender        Gender
-    createdAt     DateTime @default(now()) @map("created_at")
-    updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+    dateOfArrival DateTime?
+    createdAt     DateTime  @default(now()) @map("created_at")
+    updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
 
     permit      Permit?
     bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
