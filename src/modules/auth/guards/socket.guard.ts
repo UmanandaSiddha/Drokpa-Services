@@ -5,7 +5,6 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { Socket } from 'socket.io';
-import { console } from 'inspector';
 import { AuthService } from '../auth.service';
 
 @Injectable()
@@ -20,7 +19,9 @@ export class SocketGuard implements CanActivate {
         }
 
         const user = await this.authService.validateUserByToken(token);
-        console.log('SocketGuard user:', user);
+
+        // console.log('SocketGuard user:', user);
+
         client.data.user = user;
         return true;
     }

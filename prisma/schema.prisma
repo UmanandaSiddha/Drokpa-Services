@@ -333,6 +333,8 @@ model User {
     dateOfBirth             DateTime?
     timezone                String?
     notificationPreferences Json?
+    isDeleted               Boolean   @default(false)
+    deletedAt               DateTime?
     lastLogin               DateTime?
     lastSeen                DateTime?
     customerId              String?
@@ -355,6 +357,8 @@ model User {
 
     @@index([email])
     @@index([isDisabled, isVerified])
+    @@index([isDeleted])
+    @@index([isDeleted, createdAt])
 }
 
 model UserRoleMap {

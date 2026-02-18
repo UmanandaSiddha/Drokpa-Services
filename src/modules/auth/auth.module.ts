@@ -8,6 +8,7 @@ import { DatabaseModule } from 'src/services/database/database.module';
 import { SocketGuard } from './guards/socket.guard';
 import { EmailModule } from 'src/services/email/email.module';
 import { OnboardingModule } from 'src/modules/onboarding/onboarding.module';
+import { RoleGuard } from './guards/role.guard';
 
 @Module({
 	imports: [
@@ -24,7 +25,7 @@ import { OnboardingModule } from 'src/modules/onboarding/onboarding.module';
 		}),
 	],
 	controllers: [AuthController],
-	providers: [AuthService, AuthGuard, SocketGuard],
-	exports: [AuthService, JwtModule, AuthGuard, SocketGuard],
+	providers: [AuthService, AuthGuard, RoleGuard, SocketGuard],
+	exports: [AuthService, JwtModule, AuthGuard, RoleGuard, SocketGuard],
 })
 export class AuthModule { }

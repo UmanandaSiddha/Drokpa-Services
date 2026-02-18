@@ -3,6 +3,7 @@ import {
     IsDateString,
     IsEnum,
     IsOptional,
+    IsPhoneNumber,
     IsString,
     IsUrl,
 } from 'class-validator';
@@ -27,4 +28,8 @@ export class ProfileDto {
     @IsUrl()
     @IsOptional()
     avatarUrl?: string;
+
+    @IsPhoneNumber()
+    @IsOptional()
+    phoneNumber?: string;
 }

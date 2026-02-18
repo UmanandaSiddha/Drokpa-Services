@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, Query, BadRequestException } from '@nestjs/common';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 
@@ -11,12 +11,12 @@ export class AddressController {
         return this.addressService.createAddress(dto);
     }
 
-    @Get(':id')
+    @Get('byId/:id')
     getAddress(@Param('id') id: string) {
         return this.addressService.getAddress(id);
     }
 
-    @Put(':id')
+    @Put('byId/:id')
     updateAddress(
         @Param('id') id: string,
         @Body() dto: Partial<CreateAddressDto>,
@@ -30,10 +30,11 @@ export class AddressController {
         @Query('longitude') longitude: string,
         @Query('radius') radius?: string,
     ) {
-        return this.addressService.getNearbyAddresses(
-            parseFloat(latitude),
-            parseFloat(longitude),
-            radius ? parseFloat(radius) : 10,
-        );
+        const lat = parseFloat(latitude);
+        const lon = parseFloat(longitude);
+        if (isNaN(lat) || isNaN(lon)) {
+            throw new BadRequestException('Valid latitude and longitude are required');
+        }
+        return this.addressService.getNearbyAddresses(lat, lon, radius ? parseFloat(radius) : 10);
     }
 }

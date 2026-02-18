@@ -13,12 +13,14 @@ import {
 import { DatabaseService } from 'src/services/database/database.service';
 import { EmailService } from 'src/services/email/email.service';
 import * as bcrypt from 'bcrypt';
-import * as crypto from "crypto";
+import * as crypto from 'crypto';
 import { Request, Response } from 'express';
 import { RequestDto } from './dto/request.dto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuthProvider, Prisma, User, UserRole, UserRoleMap } from 'generated/prisma/client';
+import { ResetPasswordDto } from './dto/reset.password.dto';
+import { SAFE_USER_SELECT, SafeUser } from 'src/utils/auth.helper';
 
 @Injectable()
 export class AuthService {
@@ -33,39 +35,39 @@ export class AuthService {
 	// --- Helper Functions ---
 
 	// Verify user by token
-	async validateUserByToken(token: string): Promise<User & { roles: UserRoleMap[]; providerId?: string }> {
+	async validateUserByToken(token: string): Promise<SafeUser> {
 		try {
 			const secret = this.config.get<string>('ACCESS_TOKEN_SECRET');
 			const payload: { id: string } = await this.jwtService.verifyAsync(token, { secret });
 
 			const user = await this.databaseService.user.findUnique({
 				where: { id: payload.id },
-				include: {
+				select: {
+					...SAFE_USER_SELECT,
 					roles: true,
 					provider: {
-						select: {
-							id: true,
-						},
+						select: { id: true },
 					},
 				},
 			});
-			if (!user) throw new UnauthorizedException('Invalid user.');
+			if (!user || user.isDeleted) throw new UnauthorizedException('Invalid user.');
 
 			return {
 				...user,
 				providerId: user.provider?.id,
 			};
 		} catch (err: any) {
+			if (err instanceof UnauthorizedException) throw err; // re-throw your own exceptions
 			if (err.name === 'TokenExpiredError') throw new UnauthorizedException('Token expired.');
 			throw new UnauthorizedException('Invalid token.');
 		}
 	}
 
 	// Generate JWT Token
-	async generateToken(userId: string, type: "ACCESS_TOKEN" | "REFRESH_TOKEN", sessionId: string | null): Promise<string> {
+	generateToken(userId: string, type: "ACCESS_TOKEN" | "REFRESH_TOKEN", sessionId: string | null): string {
 		const secret = type === "ACCESS_TOKEN"
-			? process.env.ACCESS_TOKEN_SECRET
-			: process.env.REFRESH_TOKEN_SECRET;
+			? this.config.get<string>('ACCESS_TOKEN_SECRET')
+			: this.config.get<string>('REFRESH_TOKEN_SECRET');
 		const expiresIn = type === "ACCESS_TOKEN" ? "15m" : "7d";
 
 		const payload = type === "ACCESS_TOKEN" ? { id: userId } : { id: userId, sessionId: sessionId }
@@ -74,9 +76,9 @@ export class AuthService {
 	}
 
 	// Generate 6 digit OTP
-	async generateOTP(): Promise<{ otpString: string, otpToken: string, otpExpire: number }> {
+	generateOTP(): { otpString: string, otpToken: string, otpExpire: number } {
 		let otpString: string;
-		if (process.env.NODE_ENV === "production") {
+		if (this.config.get<string>('NODE_ENV') === "production") {
 			otpString = Math.floor(100000 + Math.random() * 900000).toString();
 		} else {
 			otpString = '000000';
@@ -93,8 +95,8 @@ export class AuthService {
 	}
 
 	// Send JWT Token to client cookies
-	async sendToken(res: Response, type: "ACCESS_TOKEN" | "REFRESH_TOKEN", token: string): Promise<void> {
-		const isProduction = process.env.NODE_ENV === 'production';
+	sendToken(res: Response, type: "ACCESS_TOKEN" | "REFRESH_TOKEN", token: string): void {
+		const isProduction = this.config.get<string>('NODE_ENV') === 'production';
 		const tokenName = type === "ACCESS_TOKEN" ? 'accessToken' : 'refreshToken';
 		const age = type === "ACCESS_TOKEN" ? 15 : 7 * 24 * 60;
 
@@ -108,8 +110,8 @@ export class AuthService {
 	}
 
 	// Clear client tokens
-	async clearToken(res: Response, type: "ACCESS_TOKEN" | "REFRESH_TOKEN"): Promise<void> {
-		const isProduction = process.env.NODE_ENV === 'production';
+	clearToken(res: Response, type: "ACCESS_TOKEN" | "REFRESH_TOKEN"): void {
+		const isProduction = this.config.get<string>('NODE_ENV') === 'production';
 		const tokenName = type === "ACCESS_TOKEN" ? 'accessToken' : 'refreshToken';
 
 		res.clearCookie(tokenName, {
@@ -129,9 +131,11 @@ export class AuthService {
 		const user = await this.databaseService.user.findUnique({
 			where: { email }
 		});
-		if (!user) throw new BadRequestException('Invalid Request!!');
+		if (!user || user.isVerified) {
+			return { message: 'If an account exists with this email, an OTP has been sent.', success: true };
+		};
 
-		const { otpString, otpToken, otpExpire } = await this.generateOTP();
+		const { otpString, otpToken, otpExpire } = this.generateOTP();
 
 		await this.databaseService.user.update({
 			where: { id: user.id },
@@ -144,11 +148,11 @@ export class AuthService {
 		// Send OTP email (production only)
 		await this.emailService.sendOtpEmail(email, otpString);
 
-		if (process.env.NODE_ENV !== "production") {
+		if (this.config.get<string>('NODE_ENV') !== "production") {
 			console.log("OTP: ", otpString);
 		}
 
-		return { message: 'OTP sent successfully!!', success: true };
+		return { message: 'If an account exists with this email, an OTP has been sent.', success: true };
 	}
 
 	async signUp(dto: SignUpDto, res: Response) {
@@ -157,10 +161,13 @@ export class AuthService {
 		const user = await this.databaseService.user.findUnique({
 			where: { email }
 		});
-		if (user) throw new BadRequestException('User already exists !!');
+		if (user && !user.isDeleted) throw new BadRequestException('User already exists');
+		if (user && user.isDeleted) {
+			throw new BadRequestException('This account has been deleted. Contact support.');
+		}
 
 		const hashedPassword = await bcrypt.hash(password, 10);
-		const { otpString, otpToken, otpExpire } = await this.generateOTP();
+		const { otpString, otpToken, otpExpire } = this.generateOTP();
 
 		const newUser = await this.databaseService.user.create({
 			data: {
@@ -170,7 +177,7 @@ export class AuthService {
 				email,
 				roles: {
 					create: {
-						role: process.env.DEFAULT_ADMIN_EMAIL === email ? UserRole.ADMIN : UserRole.USER
+						role: this.config.get('DEFAULT_ADMIN_EMAIL') === email ? UserRole.ADMIN : UserRole.USER
 					}
 				},
 				authIdentities: {
@@ -192,8 +199,8 @@ export class AuthService {
 			},
 		});
 
-		const accessToken = await this.generateToken(newUser.id, "ACCESS_TOKEN", null);
-		const refreshToken = await this.generateToken(newUser.id, "REFRESH_TOKEN", session.id);
+		const accessToken = this.generateToken(newUser.id, "ACCESS_TOKEN", null);
+		const refreshToken = this.generateToken(newUser.id, "REFRESH_TOKEN", session.id);
 
 		const hashedToken = await bcrypt.hash(refreshToken, 10);
 
@@ -204,17 +211,25 @@ export class AuthService {
 
 		const clientRefreshToken = `${session.id}.${refreshToken}`;
 
-		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
-		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
+		this.sendToken(res, "ACCESS_TOKEN", accessToken);
+		this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
 		// Send welcome email with OTP (production only)
 		await this.emailService.sendOtpEmail(email, otpString);
 
-		if (process.env.NODE_ENV !== "production") {
+		if (this.config.get<string>('NODE_ENV') !== "production") {
 			console.log("OTP: ", otpString);
 		}
 
-		return { message: 'User registered successfully!!', data: newUser, accessToken, clientRefreshToken };
+		return {
+			message: 'User registered successfully',
+			data: {
+				id: newUser.id,
+				email: newUser.email,
+				firstName: newUser.firstName,
+				lastName: newUser.lastName,
+			}
+		};
 	}
 
 	async verifyOtp(dto: OtpDto, res: Response) {
@@ -278,8 +293,8 @@ export class AuthService {
 			},
 		});
 
-		const accessToken = await this.generateToken(updatedUser.id, "ACCESS_TOKEN", null);
-		const refreshToken = await this.generateToken(updatedUser.id, "REFRESH_TOKEN", session.id);
+		const accessToken = this.generateToken(updatedUser.id, "ACCESS_TOKEN", null);
+		const refreshToken = this.generateToken(updatedUser.id, "REFRESH_TOKEN", session.id);
 
 		const hashedToken = await bcrypt.hash(refreshToken, 10);
 
@@ -290,8 +305,8 @@ export class AuthService {
 
 		const clientRefreshToken = `${session.id}.${refreshToken}`;
 
-		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
-		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
+		this.sendToken(res, "ACCESS_TOKEN", accessToken);
+		this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
 		// Return response with onboarding status
 		const response: any = {
@@ -301,8 +316,6 @@ export class AuthService {
 				email: updatedUser.email,
 				isVerified: updatedUser.isVerified,
 			},
-			accessToken,
-			clientRefreshToken,
 		};
 
 		// If onboarding exists and provider not created, inform user they need to complete it
@@ -329,7 +342,7 @@ export class AuthService {
 
 	async refreshToken(req: Request, res: Response) {
 		const clientToken = req.cookies?.['refreshToken'] || req.headers.authorization?.split(' ')?.[1];
-		if (!clientToken) throw new NotFoundException('Refresh token not found!!');
+		if (!clientToken) throw new NotFoundException('Refresh token not found');
 
 		const parts = clientToken.split(".");
 		const sessionId = parts.shift();
@@ -337,33 +350,40 @@ export class AuthService {
 
 		if (!sessionId || !token) throw new UnauthorizedException('Malformed token');
 
-		const decoded = await this.jwtService.verifyAsync(token, { secret: process.env.REFRESH_TOKEN_SECRET });
-		if (!decoded) throw new UnauthorizedException('Invalid refresh token!!');
+		try {
+			const decoded = await this.jwtService.verifyAsync(token, { secret: this.config.get('REFRESH_TOKEN_SECRET') });
 
-		const user = await this.databaseService.user.findUnique({
-			where: { id: decoded.id },
-		});
-		if (!user) throw new UnauthorizedException('Invalid refresh token!!');
-
-		const session = await this.databaseService.session.findUnique({
-			where: { id: decoded.sessionId },
-		});
-		if (!session) throw new ForbiddenException('Session expired');
-
-		if (session.expiresAt <= new Date(Date.now())) {
-			await this.databaseService.session.delete({
-				where: { id: session.id }
+			const user = await this.databaseService.user.findUnique({
+				where: { id: decoded.id },
 			});
-			throw new ForbiddenException('Session expired');
+			if (!user || user.isDeleted) throw new UnauthorizedException('Invalid refresh token');
+
+			if (sessionId !== decoded.sessionId) throw new ForbiddenException('Invalid session');
+
+			const session = await this.databaseService.session.findUnique({
+				where: { id: decoded.sessionId },
+			});
+			if (!session) throw new ForbiddenException('Session expired');
+
+			if (session.expiresAt <= new Date(Date.now())) {
+				await this.databaseService.session.delete({
+					where: { id: session.id }
+				});
+				throw new ForbiddenException('Session expired');
+			}
+
+			const valid = await bcrypt.compare(token, session.refreshToken);
+			if (!valid) throw new ForbiddenException('Invalid session');
+
+			const accessToken = this.generateToken(user.id, "ACCESS_TOKEN", null);
+			this.sendToken(res, "ACCESS_TOKEN", accessToken);
+
+			return { message: 'User token refreshed successfully' };
+		} catch (err) {
+			if (err instanceof UnauthorizedException || err instanceof ForbiddenException) throw err;
+			if (err.name === 'TokenExpiredError') throw new UnauthorizedException('Refresh token expired.');
+			throw new UnauthorizedException('Invalid refresh token.');
 		}
-
-		const valid = await bcrypt.compare(token, session.refreshToken);
-		if (!valid) throw new ForbiddenException('Invalid session');
-
-		const accessToken = await this.generateToken(user.id, "ACCESS_TOKEN", null);
-		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
-
-		return { message: 'User token refreshed successfully!!', accessToken };
 	}
 
 	async signIn(dto: LoginDto, res: Response) {
@@ -372,10 +392,13 @@ export class AuthService {
 		const user = await this.databaseService.user.findFirst({
 			where: { email },
 		});
-		if (!user) throw new BadRequestException('Invalid credentials!!');
+		if (!user) throw new BadRequestException('Invalid credentials.');
+		if (user.isDeleted) throw new ForbiddenException('This account has been deleted.');
+		if (user.isDisabled) throw new ForbiddenException('Account is disabled.');
+		if (!user.passwordHash) throw new BadRequestException('This account uses a different login method.');
 
 		const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-		if (!isPasswordValid) throw new BadRequestException('Invalid credentials!!');
+		if (!isPasswordValid) throw new BadRequestException('Invalid credentials');
 
 		const session = await this.databaseService.session.create({
 			data: {
@@ -385,8 +408,8 @@ export class AuthService {
 			},
 		});
 
-		const accessToken = await this.generateToken(user.id, "ACCESS_TOKEN", null);
-		const refreshToken = await this.generateToken(user.id, "REFRESH_TOKEN", session.id);
+		const accessToken = this.generateToken(user.id, "ACCESS_TOKEN", null);
+		const refreshToken = this.generateToken(user.id, "REFRESH_TOKEN", session.id);
 
 		const hashedToken = await bcrypt.hash(refreshToken, 10);
 
@@ -397,10 +420,18 @@ export class AuthService {
 
 		const clientRefreshToken = `${session.id}.${refreshToken}`;
 
-		await this.sendToken(res, "ACCESS_TOKEN", accessToken);
-		await this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
+		this.sendToken(res, "ACCESS_TOKEN", accessToken);
+		this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
-		return { message: 'User logged in successfully!!', data: user, accessToken, clientRefreshToken };
+		return {
+			message: 'User logged in successfully',
+			data: {
+				id: user.id,
+				email: user.email,
+				firstName: user.firstName,
+				lastName: user.lastName,
+			}
+		};
 	}
 
 	async logout(req: Request, res: Response, userId: string) {
@@ -416,10 +447,10 @@ export class AuthService {
 			}
 		}
 
-		await this.clearToken(res, "ACCESS_TOKEN");
-		await this.clearToken(res, "REFRESH_TOKEN");
+		this.clearToken(res, "ACCESS_TOKEN");
+		this.clearToken(res, "REFRESH_TOKEN");
 
-		return { success: true, message: 'User logged out successfully!!' }
+		return { success: true, message: 'User logged out successfully' }
 	}
 
 	async requestPasswordReset(dto: RequestDto) {
@@ -428,8 +459,7 @@ export class AuthService {
 		const user = await this.databaseService.user.findUnique({
 			where: { email }
 		});
-		if (!user) {
-			// Don't reveal if user exists
+		if (!user || !user.passwordHash) {
 			return { message: 'If an account exists with this email, a password reset link has been sent.', success: true };
 		}
 
@@ -446,7 +476,7 @@ export class AuthService {
 		});
 
 		// Send password reset email (production only)
-		const resetUrl = `${process.env.FRONTEND_URL || 'https://drokpa.com'}/reset-password?token=${resetToken}`;
+		const resetUrl = `${this.config.get<string>('FRONTEND_URL') || 'https://www.drokpa.in'}/reset-password?token=${resetToken}`;
 		await this.emailService.queueEmail({
 			to: email,
 			subject: 'Password Reset Request - Drokpa',
@@ -462,7 +492,9 @@ export class AuthService {
 		return { message: 'If an account exists with this email, a password reset link has been sent.', success: true };
 	}
 
-	async resetPassword(token: string, newPassword: string) {
+	async resetPassword(dto: ResetPasswordDto) {
+		const { token, password: newPassword } = dto;
+
 		const resetTokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
 		const user = await this.databaseService.user.findFirst({

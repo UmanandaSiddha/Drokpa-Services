@@ -18,6 +18,7 @@ import {
 import { AuthGuard, getUser } from './guards/auth.guard';
 import { Request } from 'express';
 import { RequestDto } from './dto/request.dto';
+import { ResetPasswordDto } from './dto/reset.password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -36,7 +37,7 @@ export class AuthController {
 	}
 
 	// REFRESH-TOKEN
-	@Get('refresh-token')
+	@Post('refresh-token')
 	refreshToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
 		return this.authService.refreshToken(req, res);
 	}
@@ -55,7 +56,7 @@ export class AuthController {
 
 	// LOGOUT
 	@UseGuards(AuthGuard)
-	@Put('logout')
+	@Post('logout')
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @getUser('id') userId: string) {
 		return this.authService.logout(req, res, userId);
 	}
@@ -68,7 +69,7 @@ export class AuthController {
 
 	// RESET PASSWORD
 	@Post('reset-password')
-	resetPassword(@Body() body: { token: string; password: string }) {
-		return this.authService.resetPassword(body.token, body.password);
+	resetPassword(@Body() dto: ResetPasswordDto) {
+		return this.authService.resetPassword(dto);
 	}
 }

@@ -7,11 +7,6 @@ export class OtpDto {
 
     @IsOptional()
     @IsString()
-    @ValidateIf((obj) => !obj.email)
-    phoneNumber: string;
-
-    @IsOptional()
-    @IsString()
     @IsEmail()
     @ValidateIf((obj) => !obj.phoneNumber)
     email: string;
