@@ -4,7 +4,9 @@ import { RazorpayService } from 'src/services/razorpay/razorpay.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { CreateRefundDto } from './dto/refund.dto';
-import { PaymentStatus, PaymentProvider } from 'generated/prisma/enums';
+import { PaymentStatus, PaymentProvider, BookingStatus, RefundStatus } from 'generated/prisma/enums';
+
+const BOOKING_STATUS_AWAITING_PAYMENT = 'AWAITING_PAYMENT';
 
 @Injectable()
 export class PaymentService {
@@ -19,7 +21,7 @@ export class PaymentService {
             where: {
                 id: dto.bookingId,
                 userId,
-                status: 'AWAITING_PAYMENT',
+                status: BOOKING_STATUS_AWAITING_PAYMENT,
             },
             include: {
                 items: true,
@@ -31,7 +33,7 @@ export class PaymentService {
         }
 
         // Calculate total amount from booking items
-        const totalAmount = booking.items.reduce((sum, item) => sum + item.price, 0);
+        const totalAmount = booking.items.reduce((sum, item) => sum + item.totalAmount, 0);
 
         if (dto.amount !== totalAmount) {
             throw new BadRequestException('Payment amount does not match booking total');
@@ -130,7 +132,7 @@ export class PaymentService {
         if (razorpayPayment.status === 'captured') {
             await this.databaseService.booking.update({
                 where: { id: payment.bookingId },
-                data: { status: 'CONFIRMED' },
+                data: { status: BookingStatus.CONFIRMED },
             });
         }
 
@@ -216,6 +218,15 @@ export class PaymentService {
             throw new BadRequestException('Payment provider ID not found');
         }
 
+        // Validate refund amount
+        if (dto.amount && dto.amount <= 0) {
+            throw new BadRequestException('Refund amount must be greater than 0');
+        }
+
+        if (dto.amount && dto.amount > payment.amount) {
+            throw new BadRequestException('Refund amount cannot exceed payment amount');
+        }
+
         // Create refund via Razorpay
         const razorpayRefund = await this.razorpayService.refundPayment({
             paymentId: payment.providerPaymentId,
@@ -229,12 +240,12 @@ export class PaymentService {
                 paymentId: payment.id,
                 amount: razorpayRefund.amount / 100, // Convert back to rupees
                 reason: dto.reason,
-                status: razorpayRefund.status === 'processed' ? 'PROCESSED' : 'INITIATED',
+                status: razorpayRefund.status === 'processed' ? RefundStatus.PROCESSED : RefundStatus.INITIATED,
             },
         });
 
         // Update payment status if full refund
-        if (!dto.amount || dto.amount >= payment.amount) {
+        if (!dto.amount || dto.amount === payment.amount) {
             await this.databaseService.payment.update({
                 where: { id: payment.id },
                 data: { status: PaymentStatus.REFUNDED },
@@ -242,7 +253,7 @@ export class PaymentService {
 
             await this.databaseService.booking.update({
                 where: { id: payment.bookingId },
-                data: { status: 'REFUNDED' },
+                data: { status: BookingStatus.REFUNDED },
             });
         }
 

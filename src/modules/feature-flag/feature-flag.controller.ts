@@ -4,7 +4,7 @@ import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
-import { UserRole, ServiceType } from 'generated/prisma/enums';
+import { UserRole, ProviderType } from 'generated/prisma/enums';
 
 @Controller('feature-flag')
 export class FeatureFlagController {
@@ -16,14 +16,14 @@ export class FeatureFlagController {
     }
 
     @Get('check/:serviceType')
-    async checkService(@Param('serviceType') serviceType: ServiceType) {
+    async checkService(@Param('serviceType') serviceType: ProviderType) {
         const enabled = await this.featureFlagService.isServiceEnabled(serviceType);
         const message = enabled ? null : await this.featureFlagService.getServiceMessage(serviceType);
         return { enabled, message };
     }
 
     @Get(':serviceType')
-    getFeatureFlag(@Param('serviceType') serviceType: ServiceType) {
+    getFeatureFlag(@Param('serviceType') serviceType: ProviderType) {
         return this.featureFlagService.getFeatureFlag(serviceType);
     }
 
@@ -31,7 +31,7 @@ export class FeatureFlagController {
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
     updateFeatureFlag(
-        @Param('serviceType') serviceType: ServiceType,
+        @Param('serviceType') serviceType: ProviderType,
         @Body() dto: UpdateFeatureFlagDto,
     ) {
         return this.featureFlagService.updateFeatureFlag(serviceType, dto);

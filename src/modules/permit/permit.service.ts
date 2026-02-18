@@ -103,6 +103,10 @@ export class PermitService {
             throw new NotFoundException('Permit not found');
         }
 
+        if (!reason?.trim()) {
+            throw new BadRequestException('Rejection reason is required');
+        }
+
         return this.databaseService.permit.update({
             where: { id },
             data: {
@@ -120,6 +124,10 @@ export class PermitService {
 
         if (!permit) {
             throw new NotFoundException('Permit not found');
+        }
+
+        if (!documentId?.trim()) {
+            throw new BadRequestException('Document ID is required');
         }
 
         return this.databaseService.permit.update({

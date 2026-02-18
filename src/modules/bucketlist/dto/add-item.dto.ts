@@ -1,12 +1,17 @@
-import { IsString, IsDateString, IsInt, Min, IsOptional, IsObject } from 'class-validator';
-import { ProductType } from 'generated/prisma/enums';
+import { IsString, IsDateString, IsInt, Min, IsOptional, IsObject, ValidateIf } from 'class-validator';
+import { ProviderType } from 'generated/prisma/enums';
 
 export class AddBucketListItemDto {
     @IsString()
-    productType: ProductType;
+    productType: ProviderType;
 
     @IsString()
-    productId: string;
+    @ValidateIf((obj) => obj.productType === ProviderType.TOUR_VENDOR)
+    tourId?: string;
+
+    @IsString()
+    @ValidateIf((obj) => obj.productType === ProviderType.HOMESTAY_HOST)
+    homestayId?: string;
 
     @IsInt()
     @Min(1)

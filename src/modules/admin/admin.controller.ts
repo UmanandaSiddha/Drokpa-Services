@@ -3,7 +3,7 @@ import { AdminService } from './admin.service';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
-import { UserRole, ProviderStatus } from 'generated/prisma/enums';
+import { UserRole, ProviderStatus, BookingStatus } from 'generated/prisma/enums';
 
 @Controller('admin')
 @UseGuards(AuthGuard, RoleGuard)
@@ -17,7 +17,7 @@ export class AdminController {
     }
 
     @Get('bookings')
-    getAllBookings(@Query('status') status?: string) {
+    getAllBookings(@Query('status') status?: BookingStatus) {
         return this.adminService.getAllBookings({ status });
     }
 

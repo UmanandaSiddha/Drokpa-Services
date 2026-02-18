@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
-import { ServiceType } from 'generated/prisma/enums';
+import { ProviderType } from 'generated/prisma/enums';
 
 @Injectable()
 export class FeatureFlagService {
@@ -15,7 +15,7 @@ export class FeatureFlagService {
         });
     }
 
-    async getFeatureFlag(serviceType: ServiceType) {
+    async getFeatureFlag(serviceType: ProviderType) {
         const flag = await this.databaseService.featureFlag.findUnique({
             where: { serviceType },
         });
@@ -32,7 +32,7 @@ export class FeatureFlagService {
         return flag;
     }
 
-    async updateFeatureFlag(serviceType: ServiceType, dto: UpdateFeatureFlagDto) {
+    async updateFeatureFlag(serviceType: ProviderType, dto: UpdateFeatureFlagDto) {
         const existing = await this.databaseService.featureFlag.findUnique({
             where: { serviceType },
         });
@@ -52,12 +52,12 @@ export class FeatureFlagService {
         });
     }
 
-    async isServiceEnabled(serviceType: ServiceType): Promise<boolean> {
+    async isServiceEnabled(serviceType: ProviderType): Promise<boolean> {
         const flag = await this.getFeatureFlag(serviceType);
         return flag.enabled;
     }
 
-    async getServiceMessage(serviceType: ServiceType): Promise<string | null> {
+    async getServiceMessage(serviceType: ProviderType): Promise<string | null> {
         const flag = await this.getFeatureFlag(serviceType);
         return flag.enabled ? null : flag.message;
     }

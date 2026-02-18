@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreatePOIDto } from './dto/create-poi.dto';
 
@@ -95,8 +95,8 @@ export class POIService {
             nearbyPOIs.map(async (poi) => {
                 const address = poi.addressId
                     ? await this.databaseService.address.findUnique({
-                          where: { id: poi.addressId },
-                      })
+                        where: { id: poi.addressId },
+                    })
                     : null;
                 return {
                     ...poi,
@@ -141,6 +141,10 @@ export class POIService {
     }
 
     async linkToItinerary(poiId: string, itineraryId: string, order: number) {
+        if (!Number.isInteger(order) || order < 0) {
+            throw new BadRequestException('Order must be a non-negative integer');
+        }
+
         const poi = await this.databaseService.pOI.findUnique({
             where: { id: poiId },
         });
@@ -155,6 +159,18 @@ export class POIService {
 
         if (!itinerary) {
             throw new NotFoundException('Itinerary not found');
+        }
+
+        const existingLink = await this.databaseService.tourItineraryPOI.findFirst({
+            where: {
+                itineraryId,
+                poiId,
+                order,
+            },
+        });
+
+        if (existingLink) {
+            throw new BadRequestException('POI is already linked to this itinerary at the given order');
         }
 
         return this.databaseService.tourItineraryPOI.create({

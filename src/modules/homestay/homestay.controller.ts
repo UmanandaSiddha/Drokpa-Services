@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { HomestayService } from './homestay.service';
 import { CreateHomestayDto } from './dto/create-homestay.dto';
 import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
@@ -31,6 +31,70 @@ export class HomestayController {
         });
     }
 
+    @Get('nearby')
+    getNearbyHomestays(
+        @Query('latitude') latitude: string,
+        @Query('longitude') longitude: string,
+        @Query('radius') radius?: string,
+    ) {
+        return this.homestayService.getNearbyHomestays(
+            parseFloat(latitude),
+            parseFloat(longitude),
+            radius ? parseFloat(radius) : 20,
+        );
+    }
+
+    @Get('provider/my-homestays')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.HOST)
+    getProviderHomestays(@getUser('providerId') providerId: string) {
+        return this.homestayService.getProviderHomestays(providerId);
+    }
+
+    @Post(':id/tags')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.HOST)
+    addTagsToHomestay(
+        @Param('id') homestayId: string,
+        @Body() body: { tagIds: string[] },
+        @getUser('providerId') providerId: string,
+    ) {
+        return this.homestayService.addTagsToHomestay(homestayId, body.tagIds, providerId);
+    }
+
+    @Delete(':id/tags/:tagId')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.HOST)
+    removeTagFromHomestay(
+        @Param('id') homestayId: string,
+        @Param('tagId') tagId: string,
+        @getUser('providerId') providerId: string,
+    ) {
+        return this.homestayService.removeTagFromHomestay(homestayId, tagId, providerId);
+    }
+
+    @Post(':id/facilities')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.HOST)
+    addFacilitiesToHomestay(
+        @Param('id') homestayId: string,
+        @Body() body: { facilityIds: string[] },
+        @getUser('providerId') providerId: string,
+    ) {
+        return this.homestayService.addFacilitiesToHomestay(homestayId, body.facilityIds, providerId);
+    }
+
+    @Delete(':id/facilities/:facilityId')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.HOST)
+    removeFacilityFromHomestay(
+        @Param('id') homestayId: string,
+        @Param('facilityId') facilityId: string,
+        @getUser('providerId') providerId: string,
+    ) {
+        return this.homestayService.removeFacilityFromHomestay(homestayId, facilityId, providerId);
+    }
+
     @Get(':id')
     getHomestay(@Param('id') id: string) {
         return this.homestayService.getHomestay(id);
@@ -45,12 +109,5 @@ export class HomestayController {
         @getUser('providerId') providerId: string,
     ) {
         return this.homestayService.updateHomestay(id, providerId, dto);
-    }
-
-    @Get('provider/my-homestays')
-    @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
-    getProviderHomestays(@getUser('providerId') providerId: string) {
-        return this.homestayService.getProviderHomestays(providerId);
     }
 }

@@ -14,47 +14,47 @@ export class ToursController {
     @Post()
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
-    create(@Body() dto: CreateTourDto) {
-        return this.toursService.create(dto);
+    createTour(@Body() dto: CreateTourDto) {
+        return this.toursService.createTour(dto);
     }
 
     @Get()
-    findAll() {
-        return this.toursService.findAll();
+    listActiveTours() {
+        return this.toursService.listActiveTours();
     }
 
     @Get(':id')
-    findOne(@Param('id') id: string) {
-        return this.toursService.findOne(id);
+    getTourById(@Param('id') id: string) {
+        return this.toursService.getTourById(id);
     }
 
     @Patch(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    update(@Param('id') id: string, @Body() dto: Partial<CreateTourDto>) {
-        return this.toursService.update(id, dto);
+    updateTourById(@Param('id') id: string, @Body() dto: Partial<CreateTourDto>) {
+        return this.toursService.updateTourById(id, dto);
     }
 
     @Delete(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    remove(@Param('id') id: string) {
-        return this.toursService.remove(id);
+    deactivateTour(@Param('id') id: string) {
+        return this.toursService.deactivateTour(id);
     }
 
     @Post(':id/itinerary')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
-    addItinerary(@Param('id') id: string, @Body() dto: AddItineraryDto) {
-        return this.toursService.addItinerary(id, dto);
+    addTourItineraryDay(@Param('id') id: string, @Body() dto: AddItineraryDto) {
+        return this.toursService.addTourItineraryDay(id, dto);
     }
 
     @Post('itinerary/:itineraryId/poi/:poiId')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
-    linkPOIToItinerary(
+    addPoiToItinerary(
         @Param('itineraryId') itineraryId: string,
         @Param('poiId') poiId: string,
         @Body('order') order: number,
     ) {
-        return this.toursService.linkPOIToItinerary(itineraryId, poiId, order);
+        return this.toursService.addPoiToItinerary(itineraryId, poiId, order);
     }
 }

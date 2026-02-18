@@ -26,20 +26,20 @@ export class PaymentController {
         return this.paymentService.verifyPayment(dto, userId);
     }
 
-    @Get(':id')
-    getPayment(
-        @Param('id') id: string,
-        @getUser('id') userId: string,
-    ) {
-        return this.paymentService.getPayment(id, userId);
-    }
-
     @Get('booking/:bookingId')
     getPaymentsByBooking(
         @Param('bookingId') bookingId: string,
         @getUser('id') userId: string,
     ) {
         return this.paymentService.getPaymentsByBooking(bookingId, userId);
+    }
+
+    @Get(':id')
+    getPayment(
+        @Param('id') id: string,
+        @getUser('id') userId: string,
+    ) {
+        return this.paymentService.getPayment(id, userId);
     }
 
     @Post('refund')

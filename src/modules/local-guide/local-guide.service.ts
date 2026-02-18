@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateLocalGuideDto } from './dto/create-local-guide.dto';
 
@@ -9,10 +9,38 @@ export class LocalGuideService {
     ) { }
 
     async createGuide(providerId: string, dto: CreateLocalGuideDto) {
+        // Verify provider exists
+        const provider = await this.databaseService.provider.findUnique({
+            where: { id: providerId },
+        });
+
+        if (!provider) {
+            throw new NotFoundException('Provider not found');
+        }
+
+        // Verify addressId if provided
+        if (dto.addressId) {
+            const address = await this.databaseService.address.findUnique({
+                where: { id: dto.addressId },
+            });
+            if (!address) {
+                throw new BadRequestException('Address not found');
+            }
+        }
+
         return this.databaseService.localGuide.create({
             data: {
                 ...dto,
                 providerId,
+            },
+            include: {
+                provider: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                address: true,
             },
         });
     }
@@ -72,12 +100,31 @@ export class LocalGuideService {
         }
 
         if (guide.providerId !== providerId) {
-            throw new ForbiddenException('You do not have permission to update this guide');
+            throw new BadRequestException('Unauthorized to update this guide');
+        }
+
+        // Verify addressId if provided
+        if (dto.addressId) {
+            const address = await this.databaseService.address.findUnique({
+                where: { id: dto.addressId },
+            });
+            if (!address) {
+                throw new BadRequestException('Address not found');
+            }
         }
 
         return this.databaseService.localGuide.update({
             where: { id },
             data: dto,
+            include: {
+                provider: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                address: true,
+            },
         });
     }
 
@@ -91,7 +138,7 @@ export class LocalGuideService {
         }
 
         if (guide.providerId !== providerId) {
-            throw new ForbiddenException('You do not have permission to delete this guide');
+            throw new BadRequestException('Unauthorized to delete this guide');
         }
 
         await this.databaseService.localGuide.delete({
@@ -102,34 +149,53 @@ export class LocalGuideService {
     }
 
     async getMyGuides(providerId: string) {
+        // Verify provider exists
+        const provider = await this.databaseService.provider.findUnique({
+            where: { id: providerId },
+        });
+
+        if (!provider) {
+            throw new NotFoundException('Provider not found');
+        }
+
         return this.databaseService.localGuide.findMany({
             where: { providerId },
             include: {
                 address: true,
+                provider: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
             },
             orderBy: { createdAt: 'desc' },
         });
     }
 
     async getNearbyGuides(latitude: number, longitude: number, radiusKm: number = 30) {
+        // Validate input parameters
+        if (latitude < -90 || latitude > 90) {
+            throw new BadRequestException('Latitude must be between -90 and 90');
+        }
+
+        if (longitude < -180 || longitude > 180) {
+            throw new BadRequestException('Longitude must be between -180 and 180');
+        }
+
+        if (radiusKm <= 0) {
+            throw new BadRequestException('Radius must be greater than 0');
+        }
+
         const radiusMeters = radiusKm * 1000;
 
+        // Get guide IDs ordered by distance
         const nearbyGuides = await this.databaseService.$queryRaw<Array<{
             id: string;
-            providerId: string;
-            bio: string | null;
-            languages: string[];
-            specialties: string[];
-            basePricePerDay: number;
-            imageUrls: string[];
-            rating: number | null;
-            totalReviews: number;
-            isActive: boolean;
-            addressId: string | null;
             distance: number;
         }>>`
             SELECT 
-                lg.*,
+                lg.id,
                 ST_Distance(
                     a.location,
                     ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
@@ -149,6 +215,11 @@ export class LocalGuideService {
             )
         `;
 
+        // Return early if no guides found
+        if (!nearbyGuides || nearbyGuides.length === 0) {
+            return [];
+        }
+
         // Fetch full guide data with relations
         const guideIds = nearbyGuides.map(g => g.id);
         const guides = await this.databaseService.localGuide.findMany({
@@ -164,13 +235,12 @@ export class LocalGuideService {
             },
         });
 
-        // Map distances to guides
-        return guides.map(guide => {
-            const guideData = nearbyGuides.find(g => g.id === guide.id);
-            return {
-                ...guide,
-                distance: guideData ? Number(guideData.distance) / 1000 : null, // Convert meters to km
-            };
-        });
+        // Map distances to guides using efficient Map structure
+        const distanceMap = new Map(nearbyGuides.map(g => [g.id, Number(g.distance) / 1000]));
+
+        return guides.map(guide => ({
+            ...guide,
+            distance: distanceMap.get(guide.id) || null,
+        })).sort((a, b) => (a.distance || 0) - (b.distance || 0));
     }
 }

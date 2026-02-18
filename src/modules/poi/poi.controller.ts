@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { POIService } from './poi.service';
 import { CreatePOIDto } from './dto/create-poi.dto';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
@@ -28,9 +28,16 @@ export class POIController {
         @Query('longitude') longitude: string,
         @Query('radius') radius?: string,
     ) {
+        const parsedLatitude = parseFloat(latitude);
+        const parsedLongitude = parseFloat(longitude);
+
+        if (Number.isNaN(parsedLatitude) || Number.isNaN(parsedLongitude)) {
+            throw new BadRequestException('Latitude and longitude must be valid numbers');
+        }
+
         return this.poiService.getNearbyPOIs(
-            parseFloat(latitude),
-            parseFloat(longitude),
+            parsedLatitude,
+            parsedLongitude,
             radius ? parseFloat(radius) : 10,
         );
     }
@@ -65,6 +72,12 @@ export class POIController {
         @Param('itineraryId') itineraryId: string,
         @Query('order') order: string,
     ) {
-        return this.poiService.linkToItinerary(id, itineraryId, parseInt(order));
+        const parsedOrder = Number(order);
+
+        if (!Number.isInteger(parsedOrder) || parsedOrder < 0) {
+            throw new BadRequestException('Order must be a non-negative integer');
+        }
+
+        return this.poiService.linkToItinerary(id, itineraryId, parsedOrder);
     }
 }

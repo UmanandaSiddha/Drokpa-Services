@@ -1,7 +1,7 @@
-import { Controller, Post, Get, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { PermitService } from './permit.service';
 import { SubmitPermitDto } from './dto/submit-permit.dto';
-import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
+import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole } from 'generated/prisma/enums';
@@ -19,11 +19,6 @@ export class PermitController {
         return this.permitService.submitPermit(id, dto);
     }
 
-    @Get(':id')
-    getPermit(@Param('id') id: string) {
-        return this.permitService.getPermit(id);
-    }
-
     @Put(':id/approve')
     @UseGuards(RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -39,9 +34,12 @@ export class PermitController {
     @Roles(UserRole.ADMIN)
     rejectPermit(
         @Param('id') id: string,
-        @Body('reason') reason: string,
+        @Body() body: { reason: string },
     ) {
-        return this.permitService.rejectPermit(id, reason);
+        if (!body.reason?.trim()) {
+            throw new BadRequestException('Rejection reason is required');
+        }
+        return this.permitService.rejectPermit(id, body.reason);
     }
 
     @Post(':id/document')
@@ -49,13 +47,21 @@ export class PermitController {
     @Roles(UserRole.ADMIN)
     uploadPermitDocument(
         @Param('id') id: string,
-        @Body('documentId') documentId: string,
+        @Body() body: { documentId: string },
     ) {
-        return this.permitService.uploadPermitDocument(id, documentId);
+        if (!body.documentId?.trim()) {
+            throw new BadRequestException('Document ID is required');
+        }
+        return this.permitService.uploadPermitDocument(id, body.documentId);
     }
 
     @Get('booking/:bookingId')
     getPermitsByBooking(@Param('bookingId') bookingId: string) {
         return this.permitService.getPermitsByBooking(bookingId);
+    }
+
+    @Get(':id')
+    getPermit(@Param('id') id: string) {
+        return this.permitService.getPermit(id);
     }
 }

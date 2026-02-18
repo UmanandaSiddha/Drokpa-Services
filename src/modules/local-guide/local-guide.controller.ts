@@ -33,6 +33,26 @@ export class LocalGuideController {
         });
     }
 
+    @Get('nearby')
+    getNearbyGuides(
+        @Query('latitude') latitude: string,
+        @Query('longitude') longitude: string,
+        @Query('radius') radius?: string,
+    ) {
+        return this.localGuideService.getNearbyGuides(
+            parseFloat(latitude),
+            parseFloat(longitude),
+            radius ? parseFloat(radius) : 30,
+        );
+    }
+
+    @Get('provider/my-guides')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.GUIDE)
+    getMyGuides(@getUser('providerId') providerId: string) {
+        return this.localGuideService.getMyGuides(providerId);
+    }
+
     @Get(':id')
     getGuide(@Param('id') id: string) {
         return this.localGuideService.getGuide(id);
@@ -57,12 +77,5 @@ export class LocalGuideController {
         @getUser('providerId') providerId: string,
     ) {
         return this.localGuideService.deleteGuide(id, providerId);
-    }
-
-    @Get('provider/my-guides')
-    @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.GUIDE)
-    getMyGuides(@getUser('providerId') providerId: string) {
-        return this.localGuideService.getMyGuides(providerId);
     }
 }

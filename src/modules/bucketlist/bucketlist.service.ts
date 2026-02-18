@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateBucketListDto } from './dto/create-bucketlist.dto';
 import { AddBucketListItemDto } from './dto/add-item.dto';
-import { BucketListStatus, ProductType } from 'generated/prisma/enums';
+import { BucketListStatus, ProviderType } from 'generated/prisma/enums';
 
 @Injectable()
 export class BucketListService {
@@ -37,14 +37,15 @@ export class BucketListService {
             throw new BadRequestException('Cannot add items to non-draft bucketlist');
         }
 
-        // Verify product exists
-        await this.verifyProductExists(dto.productType, dto.productId);
+        // Verify product exists and validate required field
+        const { tourId, homestayId } = await this.verifyAndGetProductIds(dto.productType, dto.tourId, dto.homestayId);
 
         return this.databaseService.bucketListItem.create({
             data: {
                 bucketListId,
                 productType: dto.productType,
-                productId: dto.productId,
+                tourId: tourId || null,
+                homestayId: homestayId || null,
                 quantity: dto.quantity,
                 startDate: dto.startDate ? new Date(dto.startDate) : null,
                 endDate: dto.endDate ? new Date(dto.endDate) : null,
@@ -74,20 +75,31 @@ export class BucketListService {
             throw new NotFoundException('Item not found');
         }
 
-        if (dto.productId && dto.productType) {
-            await this.verifyProductExists(dto.productType, dto.productId);
+        const updateData: any = {};
+
+        if (dto.productType) {
+            updateData.productType = dto.productType;
         }
+
+        if (dto.tourId || dto.homestayId) {
+            const productType = dto.productType || item.productType;
+            const { tourId, homestayId } = await this.verifyAndGetProductIds(
+                productType,
+                dto.tourId,
+                dto.homestayId,
+            );
+            if (tourId) updateData.tourId = tourId;
+            if (homestayId) updateData.homestayId = homestayId;
+        }
+
+        if (dto.quantity) updateData.quantity = dto.quantity;
+        if (dto.startDate) updateData.startDate = new Date(dto.startDate);
+        if (dto.endDate) updateData.endDate = new Date(dto.endDate);
+        if (dto.metadata) updateData.metadata = dto.metadata;
 
         return this.databaseService.bucketListItem.update({
             where: { id: itemId },
-            data: {
-                ...(dto.productType && { productType: dto.productType }),
-                ...(dto.productId && { productId: dto.productId }),
-                ...(dto.quantity && { quantity: dto.quantity }),
-                ...(dto.startDate && { startDate: new Date(dto.startDate) }),
-                ...(dto.endDate && { endDate: new Date(dto.endDate) }),
-                ...(dto.metadata && { metadata: dto.metadata }),
-            },
+            data: updateData,
         });
     }
 
@@ -218,46 +230,64 @@ export class BucketListService {
         return { message: 'BucketList deleted successfully' };
     }
 
-    private async verifyProductExists(productType: ProductType, productId: string) {
+    private async verifyAndGetProductIds(
+        productType: ProviderType,
+        tourId?: string,
+        homestayId?: string,
+    ): Promise<{ tourId: string | null; homestayId: string | null }> {
         switch (productType) {
-            case ProductType.TOUR:
+            case ProviderType.TOUR_VENDOR:
+                if (!tourId) {
+                    throw new BadRequestException('tourId is required for TOUR_VENDOR');
+                }
                 const tour = await this.databaseService.tour.findUnique({
-                    where: { id: productId },
+                    where: { id: tourId },
                 });
                 if (!tour || !tour.isActive) {
                     throw new BadRequestException('Tour not found or not active');
                 }
-                break;
+                return { tourId, homestayId: null };
 
-            case ProductType.HOMESTAY:
+            case ProviderType.HOMESTAY_HOST:
+                if (!homestayId) {
+                    throw new BadRequestException('homestayId is required for HOMESTAY_HOST');
+                }
                 const homestay = await this.databaseService.homestay.findUnique({
-                    where: { id: productId },
+                    where: { id: homestayId },
                 });
                 if (!homestay || !homestay.isActive) {
                     throw new BadRequestException('Homestay not found or not active');
                 }
-                break;
+                return { tourId: null, homestayId };
 
-            case ProductType.VEHICLE:
+            case ProviderType.VEHICLE_PARTNER:
+                if (!tourId) {
+                    throw new BadRequestException('tourId is required for VEHICLE_PARTNER');
+                }
                 const vehicle = await this.databaseService.vehicle.findUnique({
-                    where: { id: productId },
+                    where: { id: tourId },
                 });
                 if (!vehicle || !vehicle.isActive) {
                     throw new BadRequestException('Vehicle not found or not active');
                 }
-                break;
+                return { tourId, homestayId: null };
 
-            case ProductType.LOCAL_GUIDE:
+            case ProviderType.LOCAL_GUIDE:
+                if (!tourId) {
+                    throw new BadRequestException('tourId is required for LOCAL_GUIDE');
+                }
                 const guide = await this.databaseService.localGuide.findUnique({
-                    where: { id: productId },
+                    where: { id: tourId },
                 });
                 if (!guide || !guide.isActive) {
                     throw new BadRequestException('Guide not found or not active');
                 }
-                break;
+                return { tourId, homestayId: null };
 
             default:
-                throw new BadRequestException('Invalid product type');
+                throw new BadRequestException(
+                    `Invalid product type: ${productType}. Supported types: TOUR_VENDOR, HOMESTAY_HOST, VEHICLE_PARTNER, LOCAL_GUIDE`,
+                );
         }
     }
 }

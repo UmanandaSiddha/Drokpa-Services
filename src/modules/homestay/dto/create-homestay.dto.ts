@@ -1,4 +1,5 @@
-import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, IsInt, IsEnum } from 'class-validator';
+import { BookingCriteria } from 'generated/prisma/enums';
 
 export class CreateHomestayDto {
     @IsString()
@@ -7,24 +8,34 @@ export class CreateHomestayDto {
     @IsString()
     description: string;
 
-    @IsString()
+    @IsArray()
     @IsOptional()
-    addressId?: string;
+    houseRules?: string[];
 
     @IsArray()
-    tags: string[];
-
-    @IsArray()
-    facilities: string[];
+    @IsOptional()
+    safetyNSecurity?: string[];
 
     @IsArray()
     imageUrls: string[];
+
+    @IsInt()
+    @IsOptional()
+    displayPrice?: number;
+
+    @IsEnum(BookingCriteria)
+    @IsOptional()
+    bookingCriteria?: BookingCriteria;
 
     @IsString()
     email: string;
 
     @IsString()
     phoneNumber: string;
+
+    @IsString()
+    @IsOptional()
+    addressId?: string;
 
     @IsBoolean()
     @IsOptional()

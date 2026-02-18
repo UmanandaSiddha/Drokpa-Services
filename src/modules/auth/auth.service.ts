@@ -21,6 +21,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthProvider, Prisma, User, UserRole, UserRoleMap } from 'generated/prisma/client';
 import { ResetPasswordDto } from './dto/reset.password.dto';
 import { SAFE_USER_SELECT, SafeUser } from 'src/utils/auth.helper';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 @Injectable()
 export class AuthService {
@@ -30,6 +31,7 @@ export class AuthService {
 		private readonly config: ConfigService,
 		private readonly jwtService: JwtService,
 		private readonly emailService: EmailService,
+		private readonly onboardingService: OnboardingService,
 	) { }
 
 	// --- Helper Functions ---
@@ -245,45 +247,19 @@ export class AuthService {
 		});
 		if (!user) throw new BadRequestException('Invalid OTP or expired');
 
-		const payload: Prisma.UserUpdateInput = {
-			isVerified: true,
-			oneTimePassword: null,
-			oneTimeExpire: null,
-		};
-
 		const updatedUser = await this.databaseService.user.update({
 			where: { id: user.id },
-			data: payload
-		});
-
-		// Check if there's a pending onboarding invite for this email
-		// If user has firstName/lastName, we can use that as provider name
-		// Otherwise, onboarding will need to be completed manually
-		const onboarding = await this.databaseService.onboarding.findFirst({
-			where: {
-				email,
-				completedAt: null,
-				expiresAt: { gt: new Date() },
-			},
-		});
-
-		// If onboarding exists but we don't have enough info, we'll let them complete it manually
-		// For now, we'll just mark that onboarding exists (they can complete via /onboarding/complete)
-		let providerCreated = false;
-		if (onboarding) {
-			// Check if user already has provider
-			const existingProvider = await this.databaseService.provider.findUnique({
-				where: { userId: user.id },
-			});
-
-			if (!existingProvider) {
-				// Provider will be created when user completes onboarding with name/contactNumber
-				// For now, we just note that onboarding is pending
-				providerCreated = false;
-			} else {
-				providerCreated = true;
+			data: {
+				isVerified: true,
+				oneTimePassword: null,
+				oneTimeExpire: null
 			}
-		}
+		});
+
+		const onboardingResult = await this.onboardingService.checkAndCompleteOnboardingByEmail(
+			email,
+			user.id,
+		);
 
 		const session = await this.databaseService.session.create({
 			data: {
@@ -295,7 +271,6 @@ export class AuthService {
 
 		const accessToken = this.generateToken(updatedUser.id, "ACCESS_TOKEN", null);
 		const refreshToken = this.generateToken(updatedUser.id, "REFRESH_TOKEN", session.id);
-
 		const hashedToken = await bcrypt.hash(refreshToken, 10);
 
 		await this.databaseService.session.update({
@@ -318,10 +293,9 @@ export class AuthService {
 			},
 		};
 
-		// If onboarding exists and provider not created, inform user they need to complete it
-		if (onboarding && !providerCreated) {
+		if (onboardingResult?.requiresCompletion) {
 			response.onboardingPending = true;
-			response.onboardingToken = onboarding.token;
+			response.onboardingToken = onboardingResult.onboardingToken;
 			response.message = 'Email verified. Please complete your provider onboarding using the token.';
 		}
 

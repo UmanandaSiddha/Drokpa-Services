@@ -8,7 +8,7 @@ import { CreateVehicleBookingDto } from "./dto/create-vehicle-booking.dto";
 import { CreateGuideBookingDto } from "./dto/create-guide-booking.dto";
 import { ConfirmBookingDto } from "./dto/confirm-booking.dto";
 import { RejectBookingDto } from "./dto/reject-booking.dto";
-import { BookingStatus, ProductType, PermitStatus } from "generated/prisma/enums";
+import { BookingStatus, BookingSource, ProviderType, PermitStatus } from "generated/prisma/enums";
 
 @Injectable()
 export class BookingService {
@@ -35,23 +35,32 @@ export class BookingService {
             throw new BadRequestException('At least one guest is required');
         }
 
+        const basePrice = tour.finalPrice || tour.basePrice || 0;
+        const discount = tour.discount || 0;
+        const finalPrice = Math.round(basePrice * (1 - discount / 100));
+        const totalAmount = finalPrice * payload.guests.length;
+
         return this.databaseService.$transaction(async tx => {
             const booking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
-                    source: 'ONLINE',
+                    source: BookingSource.ONLINE,
+                    totalAmount,
                 },
             });
 
             const item = await tx.bookingItem.create({
                 data: {
                     bookingId: booking.id,
-                    productType: ProductType.TOUR,
+                    productType: ProviderType.TOUR_VENDOR,
                     productId: tour.id,
                     startDate: new Date(payload.startDate),
                     quantity: payload.guests.length,
-                    price: tour.price * payload.guests.length,
+                    basePrice,
+                    discount,
+                    finalPrice,
+                    totalAmount,
                     permitRequired: true, // Tours require permits
                 },
             });
@@ -171,25 +180,32 @@ export class BookingService {
             }
 
             const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-            const totalPrice = room.basePrice * nights * dto.rooms;
+            const basePrice = room.basePrice || 0;
+            const discount = room.discount || 0;
+            const finalPrice = Math.round(basePrice * (1 - discount / 100));
+            const totalAmount = finalPrice * nights * dto.rooms;
 
             const booking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
-                    source: 'ONLINE',
+                    source: BookingSource.ONLINE,
+                    totalAmount,
                 },
             });
 
             await tx.bookingItem.create({
                 data: {
                     bookingId: booking.id,
-                    productType: ProductType.HOMESTAY,
+                    productType: ProviderType.HOMESTAY_HOST,
                     productId: dto.roomId,
                     startDate: checkIn,
                     endDate: checkOut,
                     quantity: dto.rooms,
-                    price: totalPrice,
+                    basePrice,
+                    discount,
+                    finalPrice,
+                    totalAmount,
                     permitRequired: false,
                 },
             });
@@ -285,26 +301,33 @@ export class BookingService {
         }
 
         const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        const totalPrice = vehicle.basePricePerDay * days * dto.quantity;
+        const basePrice = vehicle.basePricePerDay || 0;
+        const discount = 0;
+        const finalPrice = basePrice;
+        const totalAmount = finalPrice * days * dto.quantity;
 
         return this.databaseService.$transaction(async tx => {
             const booking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
-                    source: 'ONLINE',
+                    source: BookingSource.ONLINE,
+                    totalAmount,
                 },
             });
 
             await tx.bookingItem.create({
                 data: {
                     bookingId: booking.id,
-                    productType: ProductType.VEHICLE,
+                    productType: ProviderType.VEHICLE_PARTNER,
                     productId: vehicle.id,
                     startDate,
                     endDate,
                     quantity: dto.quantity,
-                    price: totalPrice,
+                    basePrice,
+                    discount,
+                    finalPrice,
+                    totalAmount,
                     permitRequired: false,
                 },
             });
@@ -384,26 +407,33 @@ export class BookingService {
         }
 
         const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        const totalPrice = guide.basePricePerDay * days * dto.quantity;
+        const basePrice = guide.basePricePerDay || 0;
+        const discount = 0;
+        const finalPrice = basePrice;
+        const totalAmount = finalPrice * days * dto.quantity;
 
         return this.databaseService.$transaction(async tx => {
             const booking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
-                    source: 'ONLINE',
+                    source: BookingSource.ONLINE,
+                    totalAmount,
                 },
             });
 
             await tx.bookingItem.create({
                 data: {
                     bookingId: booking.id,
-                    productType: ProductType.LOCAL_GUIDE,
+                    productType: ProviderType.LOCAL_GUIDE,
                     productId: guide.id,
                     startDate,
                     endDate,
                     quantity: dto.quantity,
-                    price: totalPrice,
+                    basePrice,
+                    discount,
+                    finalPrice,
+                    totalAmount,
                     permitRequired: false,
                 },
             });
@@ -459,7 +489,19 @@ export class BookingService {
         });
     }
 
-    async confirmBooking(bookingId: string, providerId: string, dto: ConfirmBookingDto) {
+    async confirmBooking(bookingId: string, userId: string, dto: ConfirmBookingDto) {
+        // Get user's provider
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { provider: true },
+        });
+
+        if (!user?.provider) {
+            throw new BadRequestException('User is not a provider');
+        }
+
+        const providerId = user.provider.id;
+
         const booking = await this.databaseService.booking.findUnique({
             where: { id: bookingId },
             include: {
@@ -480,19 +522,19 @@ export class BookingService {
         const item = booking.items[0];
         let productProviderId: string | null = null;
 
-        if (item.productType === ProductType.HOMESTAY) {
-            // For homestay, productId is actually roomId
+        if (item.productType === ProviderType.HOMESTAY_HOST) {
+            // For homestay, productId is roomId
             const room = await this.databaseService.homestayRoom.findUnique({
                 where: { id: item.productId },
                 include: { homestay: true },
             });
             productProviderId = room?.homestay.providerId || null;
-        } else if (item.productType === ProductType.VEHICLE) {
+        } else if (item.productType === ProviderType.VEHICLE_PARTNER) {
             const vehicle = await this.databaseService.vehicle.findUnique({
                 where: { id: item.productId },
             });
             productProviderId = vehicle?.providerId || null;
-        } else if (item.productType === ProductType.LOCAL_GUIDE) {
+        } else if (item.productType === ProviderType.LOCAL_GUIDE) {
             const guide = await this.databaseService.localGuide.findUnique({
                 where: { id: item.productId },
             });
@@ -510,10 +552,10 @@ export class BookingService {
         // Use transaction for homestay availability updates
         return this.databaseService.$transaction(async tx => {
             // For homestay bookings, reduce availability when confirming
-            if (item.productType === ProductType.HOMESTAY && item.startDate && item.endDate) {
+            if (item.productType === ProviderType.HOMESTAY_HOST && item.startDate && item.endDate) {
                 const checkIn = new Date(item.startDate);
                 const checkOut = new Date(item.endDate);
-                
+
                 const availability = await tx.roomAvailability.findMany({
                     where: {
                         roomId: item.productId,
@@ -544,6 +586,7 @@ export class BookingService {
                 where: { id: bookingId },
                 data: {
                     status: BookingStatus.AWAITING_PAYMENT,
+                    confirmedAt: new Date(),
                 },
             });
 
@@ -560,7 +603,19 @@ export class BookingService {
         });
     }
 
-    async rejectBooking(bookingId: string, providerId: string, dto: RejectBookingDto) {
+    async rejectBooking(bookingId: string, userId: string, dto: RejectBookingDto) {
+        // Get user's provider
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { provider: true },
+        });
+
+        if (!user?.provider) {
+            throw new BadRequestException('User is not a provider');
+        }
+
+        const providerId = user.provider.id;
+
         const booking = await this.databaseService.booking.findUnique({
             where: { id: bookingId },
             include: {
@@ -577,19 +632,19 @@ export class BookingService {
         const item = booking.items[0];
         let productProviderId: string | null = null;
 
-        if (item.productType === ProductType.HOMESTAY) {
-            // For homestay, productId is actually roomId
+        if (item.productType === ProviderType.HOMESTAY_HOST) {
+            // For homestay, productId is roomId
             const room = await this.databaseService.homestayRoom.findUnique({
                 where: { id: item.productId },
                 include: { homestay: true },
             });
             productProviderId = room?.homestay.providerId || null;
-        } else if (item.productType === ProductType.VEHICLE) {
+        } else if (item.productType === ProviderType.VEHICLE_PARTNER) {
             const vehicle = await this.databaseService.vehicle.findUnique({
                 where: { id: item.productId },
             });
             productProviderId = vehicle?.providerId || null;
-        } else if (item.productType === ProductType.LOCAL_GUIDE) {
+        } else if (item.productType === ProviderType.LOCAL_GUIDE) {
             const guide = await this.databaseService.localGuide.findUnique({
                 where: { id: item.productId },
             });
@@ -681,7 +736,19 @@ export class BookingService {
         });
     }
 
-    async getProviderBookings(providerId: string, status?: BookingStatus) {
+    async getProviderBookings(userId: string, status?: BookingStatus) {
+        // Get user's provider
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { provider: true },
+        });
+
+        if (!user?.provider) {
+            throw new BadRequestException('User is not a provider');
+        }
+
+        const providerId = user.provider.id;
+
         // Get all products owned by provider
         const homestays = await this.databaseService.homestay.findMany({
             where: { providerId },
@@ -706,9 +773,9 @@ export class BookingService {
                 items: {
                     some: {
                         OR: [
-                            { productType: ProductType.HOMESTAY, productId: { in: homestayIds } },
-                            { productType: ProductType.VEHICLE, productId: { in: vehicleIds } },
-                            { productType: ProductType.LOCAL_GUIDE, productId: { in: guideIds } },
+                            { productType: ProviderType.HOMESTAY_HOST, productId: { in: homestayIds } },
+                            { productType: ProviderType.VEHICLE_PARTNER, productId: { in: vehicleIds } },
+                            { productType: ProviderType.LOCAL_GUIDE, productId: { in: guideIds } },
                         ],
                     },
                 },

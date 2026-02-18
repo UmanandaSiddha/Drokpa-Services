@@ -1,4 +1,4 @@
-import { IsString, IsArray, IsInt, Min, IsBoolean, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsString, IsArray, IsInt, Min, IsBoolean, IsOptional, IsNotEmpty, IsNumberString } from 'class-validator';
 
 export class CreateLocalGuideDto {
     @IsString()

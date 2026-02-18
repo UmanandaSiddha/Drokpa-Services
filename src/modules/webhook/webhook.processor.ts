@@ -4,7 +4,7 @@ import { Logger } from '@nestjs/common';
 import { WEBHOOK_QUEUE } from 'src/config/constants';
 import { DatabaseService } from 'src/services/database/database.service';
 import { EmailService } from 'src/services/email/email.service';
-import { PaymentStatus, BookingStatus } from 'generated/prisma/enums';
+import { PaymentStatus, BookingStatus, RefundStatus } from 'generated/prisma/enums';
 
 @Processor(WEBHOOK_QUEUE, {
     concurrency: 3,
@@ -182,7 +182,7 @@ export class WebhookProcessor extends WorkerHost {
                     data: {
                         paymentId: payment.id,
                         amount: refundAmount,
-                        status: 'PROCESSED',
+                        status: RefundStatus.PROCESSED,
                     },
                 });
             }

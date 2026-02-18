@@ -7,17 +7,48 @@ import { AddItineraryDto } from "./dto/add-itinerary.dto";
 export class ToursService {
     constructor(private readonly databaseService: DatabaseService) { }
 
-    async create(dto: CreateTourDto) {
+    private computeFinalPrice(basePrice: number, discount: number = 0) {
+        const normalizedDiscount = Math.max(0, Math.min(100, discount));
+        return Math.round(basePrice - (basePrice * normalizedDiscount) / 100);
+    }
+
+    async createTour(dto: CreateTourDto) {
+        const basePrice = dto.price;
+        const discount = 0;
+        const finalPrice = this.computeFinalPrice(basePrice, discount);
+
         // Tours are platform-hosted, no provider relation
         return this.databaseService.tour.create({
             data: {
-                ...dto,
-                maxCapacity: dto.maxCapacity || 10,
+                title: dto.title,
+                description: dto.description,
+                basePrice,
+                discount,
+                finalPrice,
+                duration: dto.duration,
+                imageUrls: dto.imageUrls,
+                maxCapacity: dto.maxCapacity ?? 10,
+                addressId: dto.addressId,
+                about: dto.about,
+                included: dto.included,
+                notIncluded: dto.notIncluded,
+                highlights: dto.highlights,
+                brochure: dto.brochure,
+                isActive: dto.isActive,
+                ...(dto.tags?.length
+                    ? {
+                        tags: {
+                            create: dto.tags.map(label => ({
+                                tag: { connect: { label } },
+                            })),
+                        },
+                    }
+                    : {}),
             },
         });
     }
 
-    async findAll() {
+    async listActiveTours() {
         return this.databaseService.tour.findMany({
             where: { isActive: true },
             include: {
@@ -35,7 +66,7 @@ export class ToursService {
         });
     }
 
-    async findOne(id: string) {
+    async getTourById(id: string) {
         const tour = await this.databaseService.tour.findUnique({
             where: { id },
             include: {
@@ -61,7 +92,7 @@ export class ToursService {
         return tour;
     }
 
-    async update(id: string, dto: Partial<CreateTourDto>) {
+    async updateTourById(id: string, dto: Partial<CreateTourDto>) {
         const tour = await this.databaseService.tour.findUnique({
             where: { id },
         });
@@ -70,13 +101,75 @@ export class ToursService {
             throw new NotFoundException('Tour not found');
         }
 
+        const basePrice = dto.price;
+        const discount = (dto as { discount?: number }).discount;
+        const shouldRecomputeFinal = basePrice !== undefined || discount !== undefined;
+        const nextBasePrice = basePrice ?? tour.basePrice;
+        const nextDiscount = discount ?? tour.discount;
+
+        const updateData: {
+            title?: string;
+            description?: string;
+            basePrice?: number;
+            discount?: number;
+            finalPrice?: number;
+            duration?: number;
+            imageUrls?: string[];
+            maxCapacity?: number;
+            addressId?: string | null;
+            about?: string | null;
+            included?: string[];
+            notIncluded?: string[];
+            highlights?: string[];
+            brochure?: string | null;
+            isActive?: boolean;
+            tags?: {
+                deleteMany: Record<string, never>;
+                create: Array<{ tag: { connect: { label: string } } }>;
+            };
+        } = {
+            title: dto.title,
+            description: dto.description,
+            duration: dto.duration,
+            imageUrls: dto.imageUrls,
+            maxCapacity: dto.maxCapacity,
+            addressId: dto.addressId,
+            about: dto.about,
+            included: dto.included,
+            notIncluded: dto.notIncluded,
+            highlights: dto.highlights,
+            brochure: dto.brochure,
+            isActive: dto.isActive,
+        };
+
+        if (basePrice !== undefined) {
+            updateData.basePrice = basePrice;
+        }
+
+        if (discount !== undefined) {
+            updateData.discount = discount;
+        }
+
+        if (shouldRecomputeFinal) {
+            updateData.finalPrice = this.computeFinalPrice(nextBasePrice, nextDiscount);
+        }
+
+        if (dto.tags) {
+            updateData.tags = {
+                deleteMany: {},
+                create: dto.tags.map(label => ({
+                    tag: { connect: { label } },
+                })),
+            };
+        }
+
         return this.databaseService.tour.update({
             where: { id },
-            data: dto,
+            data: updateData,
         });
     }
 
-    async remove(id: string) {
+    async deactivateTour(id: string) {
         const tour = await this.databaseService.tour.findUnique({
             where: { id },
         });
@@ -91,7 +184,7 @@ export class ToursService {
         });
     }
 
-    async addItinerary(tourId: string, dto: AddItineraryDto) {
+    async addTourItineraryDay(tourId: string, dto: AddItineraryDto) {
         const tour = await this.databaseService.tour.findUnique({
             where: { id: tourId },
         });
@@ -108,7 +201,7 @@ export class ToursService {
         });
     }
 
-    async linkPOIToItinerary(itineraryId: string, poiId: string, order: number) {
+    async addPoiToItinerary(itineraryId: string, poiId: string, order: number) {
         const itinerary = await this.databaseService.tourItinerary.findUnique({
             where: { id: itineraryId },
         });
@@ -134,17 +227,18 @@ export class ToursService {
         });
     }
 
-    async getNearbyTours(latitude: number, longitude: number, radiusKm: number = 50) {
+    async findNearbyTours(latitude: number, longitude: number, radiusKm: number = 50) {
         const radiusMeters = radiusKm * 1000;
 
         const nearbyTours = await this.databaseService.$queryRaw<Array<{
             id: string;
             title: string;
             description: string;
-            price: number;
+            basePrice: number;
+            discount: number;
+            finalPrice: number;
             duration: number;
             imageUrls: string[];
-            tags: string[];
             maxCapacity: number;
             isActive: boolean;
             addressId: string | null;

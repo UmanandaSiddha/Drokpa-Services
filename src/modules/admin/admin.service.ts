@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
-import { ProviderStatus } from 'generated/prisma/enums';
+import { ProviderStatus, PaymentStatus, UserRole, BookingStatus } from 'generated/prisma/enums';
 
 @Injectable()
 export class AdminService {
@@ -20,10 +20,10 @@ export class AdminService {
             this.databaseService.provider.count(),
             this.databaseService.booking.count(),
             this.databaseService.payment.count({
-                where: { status: 'CAPTURED' },
+                where: { status: PaymentStatus.CAPTURED },
             }),
             this.databaseService.payment.aggregate({
-                where: { status: 'CAPTURED' },
+                where: { status: PaymentStatus.CAPTURED },
                 _sum: { amount: true },
             }),
         ]);
@@ -37,10 +37,10 @@ export class AdminService {
         };
     }
 
-    async getAllBookings(filters?: { status?: string }) {
+    async getAllBookings(filters?: { status?: BookingStatus }) {
         return this.databaseService.booking.findMany({
             where: {
-                ...(filters?.status && { status: filters.status as any }),
+                ...(filters?.status && { status: filters.status }),
             },
             include: {
                 user: {
@@ -107,17 +107,17 @@ export class AdminService {
         ] = await Promise.all([
             this.databaseService.payment.count(),
             this.databaseService.payment.count({
-                where: { status: 'CAPTURED' },
+                where: { status: PaymentStatus.CAPTURED },
             }),
             this.databaseService.payment.count({
-                where: { status: 'FAILED' },
+                where: { status: PaymentStatus.FAILED },
             }),
             this.databaseService.payment.aggregate({
-                where: { status: 'CAPTURED' },
+                where: { status: PaymentStatus.CAPTURED },
                 _sum: { amount: true },
             }),
             this.databaseService.payment.findMany({
-                where: { status: 'CAPTURED' },
+                where: { status: PaymentStatus.CAPTURED },
                 take: 10,
                 orderBy: { createdAt: 'desc' },
                 include: {
@@ -163,7 +163,7 @@ export class AdminService {
             where: {
                 roles: {
                     some: {
-                        role: 'ADMIN',
+                        role: UserRole.ADMIN,
                     },
                 },
             },

@@ -1,14 +1,9 @@
 import { Body, Controller, Delete, Get, ParseEnumPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { S3Service } from './s3.service';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
-import { FileInfo, UploadType } from './dto/s3.interface';
+import { FileInfo, UploadType, UploadUrlResponse } from './dto/s3.interface';
 import { GetPresignedUrlsDto } from './dto/bulk.upload.dto';
 import { DeleteObjectDto } from './dto/delete.object.dto';
-
-interface UploadUrlResponse {
-    presignedUrl: string;
-    publicUrl: string;
-}
 
 @Controller('s3')
 @UseGuards(AuthGuard)

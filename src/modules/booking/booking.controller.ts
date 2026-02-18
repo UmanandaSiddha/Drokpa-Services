@@ -50,18 +50,20 @@ export class BookingController {
     confirmBooking(
         @Param('id') id: string,
         @Body() dto: ConfirmBookingDto,
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
     ) {
-        return this.bookingService.confirmBooking(id, providerId, dto);
+        // Provider ID is fetched from user's provider relationship in the service
+        return this.bookingService.confirmBooking(id, userId, dto);
     }
 
     @Post(':id/reject')
     rejectBooking(
         @Param('id') id: string,
         @Body() dto: RejectBookingDto,
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
     ) {
-        return this.bookingService.rejectBooking(id, providerId, dto);
+        // Provider ID is fetched from user's provider relationship in the service
+        return this.bookingService.rejectBooking(id, userId, dto);
     }
 
     @Get(':id')
@@ -82,9 +84,10 @@ export class BookingController {
 
     @Get('provider/bookings')
     getProviderBookings(
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
         @Query('status') status?: BookingStatus,
     ) {
-        return this.bookingService.getProviderBookings(providerId, status);
+        // Provider ID is fetched from user's provider relationship in the service
+        return this.bookingService.getProviderBookings(userId, status);
     }
 }

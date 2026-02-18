@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { FileInfo, UploadType, UploadUrlResponse } from './dto/s3.interface';
+import { ALLOWED_MIME_TYPES } from 'src/utils/s3.helper';
 
 @Injectable()
 export class S3Service {
@@ -24,6 +25,10 @@ export class S3Service {
      * @param file The file information.
      */
     async getUploadUrl(uploadType: UploadType, contextId: string, file: FileInfo): Promise<UploadUrlResponse> {
+        if (!ALLOWED_MIME_TYPES.includes(file.fileType)) {
+            throw new BadRequestException('File type not allowed');
+        }
+
         const key = this._generateS3Key(uploadType, contextId, file.originalFileName);
 
         const command = new PutObjectCommand({
@@ -49,7 +54,7 @@ export class S3Service {
     async getUploadUrls(uploadType: UploadType, contextId: string, files: FileInfo[]): Promise<UploadUrlResponse[]> {
         const uploadPromises = files.map(async (file) => {
             const key = this._generateS3Key(uploadType, contextId, file.originalFileName);
-            
+
             const command = new PutObjectCommand({
                 Bucket: this.bucketName,
                 Key: key,
@@ -84,9 +89,7 @@ export class S3Service {
             );
             return { success: true };
         } catch (error) {
-            console.error(`Error deleting object from S3: ${key}`, error);
-            // In a real app, you'd use a proper logger here
-            return { success: false };
+            throw new BadRequestException(`Failed to delete object: ${error.message}`);
         }
     }
 
@@ -96,9 +99,10 @@ export class S3Service {
      * Example: menu-items/outlet-123/abc-123-def-456.jpg
      */
     private _generateS3Key(uploadType: UploadType, contextId: string, originalFileName: string): string {
+        const safeContextId = contextId.replace(/[^a-zA-Z0-9\-_]/g, '');
         const fileExtension = path.extname(originalFileName); // e.g., '.jpg'
         const uniqueId = crypto.randomUUID();
-        return `${uploadType}/${contextId}/${uniqueId}${fileExtension}`;
+        return `${uploadType}/${safeContextId}/${uniqueId}${fileExtension}`;
     }
 
     /**
@@ -106,7 +110,7 @@ export class S3Service {
      */
     private _getPublicUrl(key: string): string {
         // Note: Ensure your S3 bucket has public access enabled if you use this URL directly.
-        // The region might need to be included depending on your S3 setup.
-        return `https://${this.bucketName}.s3.amazonaws.com/${key}`;
+        const region = this.configService.get<string>('AWS_REGION');
+        return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
     }
 }
