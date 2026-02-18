@@ -125,9 +125,31 @@ enum BucketListStatus {
     EXPIRED
 }
 
-// ALL Models
+enum TourType {
+    TOUR
+    TREK
+}
 
-// Address Model -> Stores PostGIS location and raw address fields with coordinates
+enum BookingCriteria {
+    PER_PERSON
+    PER_NIGHT
+    HYBRID
+}
+
+enum DocumentType {
+    PASSPORT
+    ID_PROOF
+    PERMIT
+}
+
+enum ConfigType {
+    HOME_PAGE
+}
+
+// ─────────────────────────────────────────────
+// Address
+// Stores PostGIS location and raw address fields with coordinates
+// ─────────────────────────────────────────────
 model Address {
     id         String                                @id @default(uuid())
     street     String?
@@ -150,7 +172,9 @@ model Address {
     @@unique([latitude, longitude])
 }
 
-// Point of Interest Model -> 
+// ─────────────────────────────────────────────
+// POI — Point of Interest
+// ─────────────────────────────────────────────
 model POI {
     id          String   @id @default(uuid())
     name        String
@@ -169,39 +193,50 @@ model POI {
     @@index([addressId])
 }
 
+// ─────────────────────────────────────────────
+// BucketList
+// ─────────────────────────────────────────────
 model BucketList {
     id        String           @id @default(uuid())
     userId    String
     tripName  String?
     status    BucketListStatus @default(DRAFT)
-    user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-    items     BucketListItem[]
     createdAt DateTime         @default(now()) @map("created_at")
     updatedAt DateTime         @default(now()) @updatedAt @map("updated_at")
+
+    user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+    items BucketListItem[]
 
     @@index([userId, status])
 }
 
+// ─────────────────────────────────────────────
+// BucketListItem
+// ─────────────────────────────────────────────
 model BucketListItem {
     id           String       @id @default(uuid())
     bucketListId String
     productType  ProviderType
-    productId    String
+    tourId       String?
+    homestayId   String?
     quantity     Int          @default(1)
     startDate    DateTime?
     endDate      DateTime?
     metadata     Json?
     createdAt    DateTime     @default(now()) @map("created_at")
 
-    tour       Tour?      @relation(fields: [productId], references: [id], map: "BucketListItem_tour_fkey")
-    homestay   Homestay?  @relation(fields: [productId], references: [id], map: "BucketListItem_homestay_fkey")
+    tour       Tour?      @relation(fields: [tourId], references: [id])
+    homestay   Homestay?  @relation(fields: [homestayId], references: [id])
     bucketList BucketList @relation(fields: [bucketListId], references: [id], onDelete: Cascade)
 
-    @@index([productId])
-    @@index([productType, productId])
+    @@index([tourId])
+    @@index([homestayId])
+    @@index([bucketListId])
 }
 
-// Not for V1
+// ─────────────────────────────────────────────
+// Vehicle — Not for V1
+// ─────────────────────────────────────────────
 model Vehicle {
     id              String      @id @default(uuid())
     name            String
@@ -225,6 +260,9 @@ model Vehicle {
     @@index([addressId])
 }
 
+// ─────────────────────────────────────────────
+// LocalGuide
+// ─────────────────────────────────────────────
 model LocalGuide {
     id              String   @id @default(uuid())
     providerId      String
@@ -248,6 +286,9 @@ model LocalGuide {
     @@index([addressId])
 }
 
+// ─────────────────────────────────────────────
+// Permit
+// ─────────────────────────────────────────────
 model Permit {
     id               String       @id @default(uuid())
     bookingItemId    String?
@@ -274,6 +315,9 @@ model Permit {
     @@index([participantId])
 }
 
+// ─────────────────────────────────────────────
+// User
+// ─────────────────────────────────────────────
 model User {
     id                      String    @id @default(uuid())
     email                   String    @unique
@@ -285,18 +329,19 @@ model User {
     isDisabled              Boolean   @default(false)
     avatarUrl               String?
     gender                  Gender?
+    phoneNumber             String?
     dateOfBirth             DateTime?
     timezone                String?
     notificationPreferences Json?
     lastLogin               DateTime?
     lastSeen                DateTime?
     customerId              String?
-    createdAt               DateTime  @default(now()) @map("created_at")
-    updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
     oneTimePassword         String?
     oneTimeExpire           DateTime?
     resetToken              String?
     resetTokenExpire        DateTime?
+    createdAt               DateTime  @default(now()) @map("created_at")
+    updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
 
     provider       Provider?
     roles          UserRoleMap[]
@@ -306,6 +351,7 @@ model User {
     reviews        Review[]
     memories       Memories[]
     bucketLists    BucketList[]
+    documents      Document[]
 
     @@index([email])
     @@index([isDisabled, isVerified])
@@ -356,11 +402,16 @@ model Onboarding {
     createdAt    DateTime       @default(now()) @map("created_at")
     updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at")
 
+    provider Provider? @relation(fields: [providerId], references: [id])
+
     @@index([token])
     @@index([email])
     @@index([token, expiresAt])
 }
 
+// ─────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────
 model Provider {
     id            String         @id @default(uuid())
     name          String
@@ -379,15 +430,42 @@ model Provider {
     vehicles    Vehicle[]
     localGuides LocalGuide[]
     payouts     ProviderPayout[]
+    onboardings Onboarding[]
 
     @@index([status, verified])
 }
 
+// ─────────────────────────────────────────────
+// Review
+//
+// NOTE on @@unique: Postgres treats NULL != NULL in unique indexes,
+// so @@unique([userId, targetType, tourId, homestayId]) will NOT
+// prevent a user from leaving two reviews for the same tour if
+// homestayId is NULL both times — the DB sees them as distinct.
+// Enforce the one-review-per-product rule in your service layer,
+// or use a partial unique index per type in a raw migration:
+//
+//   CREATE UNIQUE INDEX uq_review_user_tour
+//     ON "Review" ("userId", "tourId")
+//     WHERE "tourId" IS NOT NULL;
+//
+//   CREATE UNIQUE INDEX uq_review_user_homestay
+//     ON "Review" ("userId", "homestayId")
+//     WHERE "homestayId" IS NOT NULL;
+//
+// DB-level check constraint (add to migration SQL):
+//   ALTER TABLE "Review" ADD CONSTRAINT chk_review_one_target
+//     CHECK (
+//       (tour_id IS NOT NULL AND homestay_id IS NULL) OR
+//       (tour_id IS NULL AND homestay_id IS NOT NULL)
+//     );
+// ─────────────────────────────────────────────
 model Review {
     id         String       @id @default(uuid())
     userId     String
     targetType ProviderType
-    targetId   String
+    tourId     String?
+    homestayId String?
     rating     Int          @db.SmallInt // 1-5
     comment    String?      @db.Text
     bookingId  String?
@@ -396,14 +474,19 @@ model Review {
 
     booking  Booking?  @relation(fields: [bookingId], references: [id])
     user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-    tour     Tour?     @relation(fields: [targetId], references: [id], map: "Review_tour_fkey")
-    homestay Homestay? @relation(fields: [targetId], references: [id], map: "Review_homestay_fkey")
+    tour     Tour?     @relation(fields: [tourId], references: [id])
+    homestay Homestay? @relation(fields: [homestayId], references: [id])
 
-    @@unique([userId, targetType, targetId])
-    @@index([targetType, targetId])
+    // See note above — enforce uniqueness via partial indexes in migration SQL
+    @@index([tourId])
+    @@index([homestayId])
+    @@index([userId])
     @@index([rating])
 }
 
+// ─────────────────────────────────────────────
+// Tag
+// ─────────────────────────────────────────────
 model Tag {
     id        String   @id @default(uuid())
     label     String   @unique
@@ -435,6 +518,9 @@ model HomestayTag {
     @@id([homestayId, tagId])
 }
 
+// ─────────────────────────────────────────────
+// Facility
+// ─────────────────────────────────────────────
 model Facility {
     id          String   @id @default(uuid())
     name        String   @unique
@@ -456,6 +542,9 @@ model HomestayFacility {
     @@id([homestayId, facilityId])
 }
 
+// ─────────────────────────────────────────────
+// Tour Itinerary
+// ─────────────────────────────────────────────
 model TourItinerary {
     id        String @id @default(uuid())
     tourId    String
@@ -466,6 +555,7 @@ model TourItinerary {
     tour Tour               @relation(fields: [tourId], references: [id], onDelete: Cascade)
     pois TourItineraryPOI[]
 
+    @@unique([tourId, dayNumber]) // prevent duplicate day entries per tour
     @@index([tourId])
 }
 
@@ -483,25 +573,26 @@ model TourItineraryPOI {
     @@index([poiId])
 }
 
-enum TourType {
-    TOUR
-    TREK
-}
-
+// ─────────────────────────────────────────────
+// Tour
+// NOTE: finalPrice is a stored computed field (basePrice - discount%).
+// Always update it together with basePrice/discount in your service layer
+// to prevent drift.
+// ─────────────────────────────────────────────
 model Tour {
-    id           String      @id @default(uuid())
+    id           String   @id @default(uuid())
     title        String
     description  String
-    type         TourType    @default(TOUR)
+    type         TourType @default(TOUR)
     basePrice    Int // Original price
-    discount     Int         @default(0) // Percentage discount (0-100)
-    finalPrice   Int // Actual selling price (can be manually adjusted)
-    duration     Int
+    discount     Int      @default(0) // Percentage discount (0-100)
+    finalPrice   Int // Actual selling price — keep in sync with basePrice/discount
+    duration     Int // In days
     imageUrls    String[]
-    maxCapacity  Int         @default(10)
-    rating       Float?      @default(0)
-    totalReviews Int         @default(0)
-    isActive     Boolean     @default(true)
+    maxCapacity  Int      @default(10)
+    rating       Float?   @default(0)
+    totalReviews Int      @default(0)
+    isActive     Boolean  @default(true)
     about        String?
     included     String[]
     notIncluded  String[]
@@ -510,23 +601,25 @@ model Tour {
     addressId    String?
     providerId   String?
     guideId      String?
-    guide        LocalGuide? @relation(fields: [guideId], references: [id])
-    createdAt    DateTime    @default(now()) @map("created_at")
-    updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at")
+    createdAt    DateTime @default(now()) @map("created_at")
+    updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
 
+    guide           LocalGuide?      @relation(fields: [guideId], references: [id])
+    address         Address?         @relation(fields: [addressId], references: [id])
+    provider        Provider?        @relation(fields: [providerId], references: [id])
     reviews         Review[]
     tags            TourTag[]
     itinerary       TourItinerary[]
     bucketListItems BucketListItem[]
-    address         Address?         @relation(fields: [addressId], references: [id])
-    provider        Provider?        @relation(fields: [providerId], references: [id])
 
     @@index([providerId])
     @@index([isActive, rating])
     @@index([addressId])
 }
 
-// Not for V1
+// ─────────────────────────────────────────────
+// Activity — Not for V1
+// ─────────────────────────────────────────────
 model Activity {
     id          String   @id @default(uuid())
     title       String
@@ -542,12 +635,12 @@ model Activity {
     @@index([providerId])
 }
 
-enum BookingCriteria {
-    PER_PERSON
-    PER_NIGHT
-    HYBRID
-}
-
+// ─────────────────────────────────────────────
+// Homestay
+// NOTE: bookingCriteria exists on both Homestay and HomestayRoom.
+// HomestayRoom-level takes precedence; the Homestay-level field is
+// a display default only. Enforce this clearly in your service layer.
+// ─────────────────────────────────────────────
 model Homestay {
     id              String          @id @default(uuid())
     name            String
@@ -558,7 +651,7 @@ model Homestay {
     displayPrice    Int? // "Starting from ₹X" for UI
     rating          Float?          @default(0)
     totalReviews    Int             @default(0)
-    bookingCriteria BookingCriteria @default(PER_NIGHT)
+    bookingCriteria BookingCriteria @default(PER_NIGHT) // display default; room-level overrides
     email           String
     phoneNumber     String
     isActive        Boolean         @default(true)
@@ -567,19 +660,22 @@ model Homestay {
     createdAt       DateTime        @default(now()) @map("created_at")
     updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
 
+    address         Address?           @relation(fields: [addressId], references: [id])
+    provider        Provider           @relation(fields: [providerId], references: [id])
     reviews         Review[]
     facilities      HomestayFacility[]
     tags            HomestayTag[]
     rooms           HomestayRoom[]
     bucketListItems BucketListItem[]
-    address         Address?           @relation(fields: [addressId], references: [id])
-    provider        Provider           @relation(fields: [providerId], references: [id])
 
     @@index([providerId])
     @@index([addressId])
     @@index([isActive, rating])
 }
 
+// ─────────────────────────────────────────────
+// HomestayRoom
+// ─────────────────────────────────────────────
 model HomestayRoom {
     id              String          @id @default(uuid())
     homestayId      String
@@ -588,10 +684,10 @@ model HomestayRoom {
     capacity        Int
     basePrice       Int
     discount        Int             @default(0)
-    finalPrice      Int // Actual selling price after discount + rounding
+    finalPrice      Int // Actual selling price — keep in sync with basePrice/discount
     bookingCriteria BookingCriteria @default(PER_NIGHT)
     totalRooms      Int
-    amenities       String[] // Or make it Json[]
+    amenities       String[]
     imageUrls       String[]
     isActive        Boolean         @default(true)
     createdAt       DateTime        @default(now()) @map("created_at")
@@ -604,10 +700,16 @@ model HomestayRoom {
     @@index([homestayId, isActive])
 }
 
+// ─────────────────────────────────────────────
+// RoomAvailability
+// NOTE: date is stored as DateTime. To avoid timezone bugs, always
+// normalize to UTC midnight (00:00:00Z) before writing, or use a
+// raw @db.Date column in a future migration.
+// ─────────────────────────────────────────────
 model RoomAvailability {
     id        String   @id @default(uuid())
     roomId    String
-    date      DateTime
+    date      DateTime @db.Date // FIX: use Date type to avoid TZ drift
     available Int
 
     room HomestayRoom @relation(fields: [roomId], references: [id])
@@ -634,8 +736,10 @@ model RoomBooking {
     @@index([checkIn, checkOut])
 }
 
-// Not for V1
-model Destinations {
+// ─────────────────────────────────────────────
+// Destination — Not for V1
+// ─────────────────────────────────────────────
+model Destination {
     id          String   @id @default(uuid())
     name        String
     description String
@@ -650,32 +754,42 @@ model Destinations {
     updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 }
 
+// ─────────────────────────────────────────────
+// Booking
+// ─────────────────────────────────────────────
 model Booking {
     id                 String        @id @default(uuid())
     userId             String
     status             BookingStatus
     source             BookingSource @default(ONLINE)
-    totalAmount        Int? // Add total amount
-    paidAmount         Int? // Add paid amount
-    confirmedAt        DateTime? // When confirmed
-    cancelledAt        DateTime? // When cancelled
+    totalAmount        Int?
+    paidAmount         Int?
+    confirmedAt        DateTime?
+    cancelledAt        DateTime?
     cancellationReason String?
-    completedAt        DateTime? // When completed
+    completedAt        DateTime?
     expiresAt          DateTime? // Payment expiry for AWAITING_PAYMENT
-    metadata           Json? // Additional booking data
+    metadata           Json?
     createdAt          DateTime      @default(now()) @map("created_at")
     updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
 
+    user    User          @relation(fields: [userId], references: [id])
     reviews Review[]
     payment Payment[]
     items   BookingItem[]
-    user    User          @relation(fields: [userId], references: [id])
 
     @@index([userId, status])
     @@index([status, expiresAt])
     @@index([createdAt])
 }
 
+// ─────────────────────────────────────────────
+// BookingItem
+// NOTE: productType + productId are kept for fast querying/filtering.
+// There are no Prisma-level FK relations to Tour/Homestay here by
+// design — resolution is handled in the service layer.
+// totalAmount = finalPrice * quantity. Keep in sync on every write.
+// ─────────────────────────────────────────────
 model BookingItem {
     id             String       @id @default(uuid())
     bookingId      String
@@ -684,17 +798,18 @@ model BookingItem {
     startDate      DateTime?
     endDate        DateTime?
     quantity       Int
-    basePrice      Int // Original unit price (snapshot)
+    basePrice      Int // Original unit price (snapshot at time of booking)
     discount       Int // Discount applied (%)
-    finalPrice     Int // Actual unit price charged (can differ from basePrice - discount)
-    totalAmount    Int // finalPrice * quantity (redundant but useful for auditing)
+    finalPrice     Int // Actual unit price charged
+    totalAmount    Int // finalPrice * quantity — keep in sync
     permitRequired Boolean      @default(false)
-    metadata       Json? // Room details, tour preferences, etc.
+    metadata       Json?
 
+    booking Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
     guests  BookingGuest[]
     rooms   RoomBooking?
     permits Permit[]
-    booking Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    payouts ProviderPayout[]
 
     @@index([bookingId])
     @@index([productType, productId])
@@ -704,7 +819,7 @@ model BookingGuest {
     id            String    @id @default(uuid())
     bookingItemId String
     fullName      String
-    email         String? // Add email
+    email         String?
     age           Int
     contactNumber String
     gender        Gender
@@ -728,9 +843,9 @@ model TemporaryUpload {
     mimeType       String
     size           Int?
     uploadedAt     DateTime  @default(now())
-    expiresAt      DateTime // Auto-delete after X hours
+    expiresAt      DateTime
     associatedWith String? // "booking", "permit", "onboarding"
-    referenceId    String? // bookingId, permitId, etc.
+    referenceId    String?
     isUsed         Boolean   @default(false)
     deletedAt      DateTime?
     createdAt      DateTime  @default(now()) @map("created_at")
@@ -761,16 +876,16 @@ model Payment {
     bankName          String?
     nickname          String?
     bookingId         String?
-    failureReason     String? // Add failure reason
-    capturedAt        DateTime? // When payment captured
-    failedAt          DateTime? // When payment failed
+    failureReason     String?
+    capturedAt        DateTime?
+    failedAt          DateTime?
     createdAt         DateTime        @default(now()) @map("created_at")
     updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at")
 
+    booking Booking?         @relation(fields: [bookingId], references: [id])
     refunds Refund[]
     payouts ProviderPayout[]
     webhook WebhookEvent[]
-    booking Booking?         @relation(fields: [bookingId], references: [id])
 
     @@index([bookingId])
     @@index([status])
@@ -796,21 +911,34 @@ model Refund {
     @@index([status])
 }
 
+// ─────────────────────────────────────────────
+// ProviderPayout
+// ─────────────────────────────────────────────
 model ProviderPayout {
-    id          String       @id @default(uuid())
-    providerId  String
-    paymentId   String?
-    amount      Int
-    periodStart DateTime
-    periodEnd   DateTime
-    status      PayoutStatus
-    createdAt   DateTime     @default(now()) @map("created_at")
-    updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
+    id            String       @id @default(uuid())
+    providerId    String
+    bookingItemId String
+    paymentId     String?
+    amount        Int
+    platformFee   Int          @default(0) // optional: track your cut
+    netAmount     Int // amount - platformFee
+    periodStart   DateTime
+    periodEnd     DateTime
+    status        PayoutStatus
+    createdAt     DateTime     @default(now()) @map("created_at")
+    updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at")
 
-    payment  Payment? @relation(fields: [paymentId], references: [id])
-    provider Provider @relation(fields: [providerId], references: [id])
+    bookingItem BookingItem @relation(fields: [bookingItemId], references: [id])
+    payment     Payment?    @relation(fields: [paymentId], references: [id])
+    provider    Provider    @relation(fields: [providerId], references: [id])
+
+    @@index([providerId, status])
+    @@index([bookingItemId])
 }
 
+// ─────────────────────────────────────────────
+// CancellationPolicy
+// ─────────────────────────────────────────────
 model CancellationPolicy {
     id          String       @id @default(uuid())
     productType ProviderType
@@ -820,7 +948,7 @@ model CancellationPolicy {
     createdAt   DateTime     @default(now()) @map("created_at")
     updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 
-    @@unique([productType, productId])
+    @@unique([productId, productType])
 }
 
 model WebhookEvent {
@@ -844,22 +972,26 @@ model WebhookEvent {
     @@index([paymentId])
 }
 
+// ─────────────────────────────────────────────
+// Document
+// ─────────────────────────────────────────────
 model Document {
     id           String       @id @default(uuid())
     userId       String?
     type         DocumentType
     url          String // Full S3 URL
-    s3Key        String? // Add S3 key for deletion
-    s3Bucket     String? // Add bucket name
+    s3Key        String?
+    s3Bucket     String?
     fileName     String?
     mimeType     String?
     size         Int?
     uploadedAt   DateTime     @default(now())
     deletedAt    DateTime?
-    tempUploadId String? // Link to temporary upload
+    tempUploadId String?
     createdAt    DateTime     @default(now()) @map("created_at")
     updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at")
 
+    user              User?    @relation(fields: [userId], references: [id])
     permitsAsPassport Permit[] @relation("PassportPhoto")
     permitsAsIdentity Permit[] @relation("IdentityProof")
     permitsAsDocument Permit[] @relation("PermitDocument")
@@ -876,10 +1008,10 @@ model ServiceWaitlist {
     name        String?
     phoneNumber String?
     serviceType ProviderType
-    location    String? // User's location
+    location    String?
     notified    Boolean      @default(false)
     notifiedAt  DateTime?
-    metadata    Json? // Additional preferences
+    metadata    Json?
     createdAt   DateTime     @default(now()) @map("created_at")
     updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 
@@ -893,11 +1025,11 @@ model CommunityJoinRequest {
     email       String    @unique
     phoneNumber String
     location    String?
-    interests   String[] // What they're interested in
+    interests   String[]
     message     String?   @db.Text
     contacted   Boolean   @default(false)
     contactedAt DateTime?
-    notes       String?   @db.Text // Admin notes
+    notes       String?   @db.Text
     createdAt   DateTime  @default(now()) @map("created_at")
     updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
 
@@ -909,34 +1041,29 @@ model FeatureFlag {
     id          String       @id @default(uuid())
     serviceType ProviderType @unique
     enabled     Boolean      @default(true)
-    message     String? // Message to show when service is disabled
+    message     String?
     createdAt   DateTime     @default(now()) @map("created_at")
     updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
 
     @@index([serviceType, enabled])
 }
 
-enum DocumentType {
-    PASSPORT
-    ID_PROOF
-    PERMIT
-}
-
-// Not for V1
+// ─────────────────────────────────────────────
+// AppBanner — Not for V1
+// FIX #6: Renamed imageUrl -> imageUrls to match naming convention
+// ─────────────────────────────────────────────
 model AppBanner {
     id        String   @id @default(uuid())
     name      String
-    imageUrl  String[]
+    imageUrls String[] // FIX: was imageUrl (inconsistent with rest of schema)
     redirect  String
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 }
 
-enum ConfigType {
-    HOME_PAGE
-}
-
-// Not for V1
+// ─────────────────────────────────────────────
+// AppUiConfig — Not for V1
+// ─────────────────────────────────────────────
 model AppUiConfig {
     id        String     @id @default(uuid())
     name      String
@@ -946,7 +1073,9 @@ model AppUiConfig {
     updatedAt DateTime   @default(now()) @updatedAt @map("updated_at")
 }
 
-// Not for V1
+// ─────────────────────────────────────────────
+// Memories — Not for V1
+// ─────────────────────────────────────────────
 model Memories {
     id          String   @id @default(uuid())
     title       String
