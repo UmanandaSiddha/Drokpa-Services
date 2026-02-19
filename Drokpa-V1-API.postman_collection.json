@@ -1613,6 +1613,234 @@
                     }
                 }
             ]
+        },
+        {
+            "name": "Payouts",
+            "item": [
+                {
+                    "name": "Get My Payouts (Provider)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/my-payouts?page=1&limit=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "my-payouts"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Payout (ADMIN)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"bookingItemId\": \"{{booking_item_id}}\",\n  \"providerId\": \"{{provider_id}}\",\n  \"amount\": 50000,\n  \"platformFee\": 5000,\n  \"periodStart\": \"2026-03-15\",\n  \"periodEnd\": \"2026-03-20\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/payout",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Payouts (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/admin/all?page=1&limit=10&status=PENDING",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "admin",
+                                "all"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "PENDING"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Provider Payouts (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/admin/provider/{{provider_id}}?page=1&limit=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "admin",
+                                "provider",
+                                "{{provider_id}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Payout Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/{{payout_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "{{payout_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Mark Payout Processing (ADMIN)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/{{payout_id}}/processing",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "{{payout_id}}",
+                                "processing"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Mark Payout Completed (ADMIN)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/{{payout_id}}/complete",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "{{payout_id}}",
+                                "complete"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Mark Payout Failed (ADMIN)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/payout/{{payout_id}}/fail",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "payout",
+                                "{{payout_id}}",
+                                "fail"
+                            ]
+                        }
+                    }
+                }
+            ]
         }
     ],
     "variable": [

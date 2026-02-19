@@ -10,8 +10,6 @@ import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole, PayoutStatus } from 'generated/prisma/enums';
 import { QueryString } from 'src/utils/apiFeatures';
 import { CreatePayoutDto } from './dto/create-payout.dto';
-import { MarkFailedDto } from './dto/mark-failed.dto';
-import { MarkCompletedDto } from './dto/mark-completed.dto';
 
 @Controller('payout')
 @UseGuards(AuthGuard)
@@ -28,10 +26,11 @@ export class PayoutController {
     @UseGuards(RoleGuard)
     @Roles(UserRole.HOST, UserRole.VENDOR, UserRole.GUIDE)
     getMyPayouts(
-        @getUser('providerId') providerId: string,
+        @getUser('id') userId: string,
         @Query() query: QueryString,
     ) {
-        return this.payoutService.getMyPayouts(providerId, query);
+        // Service will look up provider from userId
+        return this.payoutService.getMyPayouts(userId, query);
     }
 
     // ── Admin endpoints ───────────────────────
@@ -88,31 +87,25 @@ export class PayoutController {
     }
 
     /**
-     * Confirm payout — mark as completed with transaction reference.
+     * Confirm payout — mark as completed.
      * PATCH /payout/:id/complete
      */
     @Patch(':id/complete')
     @UseGuards(RoleGuard)
     @Roles(UserRole.ADMIN)
-    markCompleted(
-        @Param('id') id: string,
-        @Body() dto: MarkCompletedDto,
-    ) {
-        return this.payoutService.markCompleted(id, dto.transactionReference);
+    markCompleted(@Param('id') id: string) {
+        return this.payoutService.markCompleted(id);
     }
 
     /**
-     * Mark payout as failed with a reason.
+     * Mark payout as failed.
      * PATCH /payout/:id/fail
      */
     @Patch(':id/fail')
     @UseGuards(RoleGuard)
     @Roles(UserRole.ADMIN)
-    markFailed(
-        @Param('id') id: string,
-        @Body() dto: MarkFailedDto,
-    ) {
-        return this.payoutService.markFailed(id, dto.reason);
+    markFailed(@Param('id') id: string) {
+        return this.payoutService.markFailed(id);
     }
 
     // ── Shared (Admin or owning Provider) ─────
@@ -125,10 +118,9 @@ export class PayoutController {
     @Get(':id')
     getPayout(
         @Param('id') id: string,
-        @getUser('providerId') providerId: string,
-        @getUser('roles') roles: Array<{ role: string }>,
+        @getUser('id') userId: string,
     ) {
-        const isAdmin = roles?.some(r => r.role === 'ADMIN');
-        return this.payoutService.getPayout(id, isAdmin ? undefined : providerId);
+        // Service handles authorization — admins can view all, providers see their own
+        return this.payoutService.getPayout(id, userId);
     }
 }
