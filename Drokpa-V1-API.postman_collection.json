@@ -7,6 +7,362 @@
     },
     "item": [
         {
+            "name": "Users",
+            "item": [
+                {
+                    "name": "Get My Profile",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/me",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Profile",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"profileImage\": \"https://example.com/image.jpg\",\n  \"bio\": \"Travel enthusiast\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/user/me/profile",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "profile"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Email/Details",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newemail@example.com\",\n  \"phoneNumber\": \"+919876543210\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/user/me/details",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "details"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Notification Preferences",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"emailNotifications\": true,\n  \"smsNotifications\": false,\n  \"pushNotifications\": true,\n  \"marketingEmails\": false\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/user/me/notifications",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "notifications"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Bookings",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/me/bookings?page=1&limit=10&status=CONFIRMED",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "bookings"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "CONFIRMED"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Reviews",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/me/reviews",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "reviews"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Bucket Lists",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/me/bucket-lists",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me",
+                                "bucket-lists"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete My Account",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/me",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "me"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Users (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/admin/all?page=1&limit=10&search=john",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "admin",
+                                "all"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "john"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get User by ID (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/admin/{{user_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "admin",
+                                "{{user_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Toggle User Status (ADMIN)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/admin/{{user_id}}/status",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "admin",
+                                "{{user_id}}",
+                                "status"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Manually Verify User (ADMIN)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/admin/{{user_id}}/verify",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "admin",
+                                "{{user_id}}",
+                                "verify"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete User (ADMIN)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/user/admin/{{user_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "user",
+                                "admin",
+                                "{{user_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "Authentication",
             "item": [
                 {
@@ -1615,6 +1971,1220 @@
             ]
         },
         {
+            "name": "Reviews",
+            "item": [
+                {
+                    "name": "Create Review",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"targetType\": \"TOUR\",\n  \"targetId\": \"{{tour_id}}\",\n  \"rating\": 4,\n  \"comment\": \"Great experience! Well organized tour.\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/review",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Reviews for Target",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/review/TOUR/{{tour_id}}?page=1&limit=10",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review",
+                                "TOUR",
+                                "{{tour_id}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Reviews",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/review/my-reviews",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review",
+                                "my-reviews"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Review Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/review/{{review_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review",
+                                "{{review_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Review",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Updated: Excellent tour!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/review/{{review_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review",
+                                "{{review_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Review",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/review/{{review_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "review",
+                                "{{review_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Address",
+            "item": [
+                {
+                    "name": "Create Address",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"addressLine1\": \"123 Mountain Road\",\n  \"addressLine2\": \"Near Manali Town\",\n  \"city\": \"Manali\",\n  \"state\": \"Himachal Pradesh\",\n  \"postalCode\": \"175131\",\n  \"country\": \"India\",\n  \"latitude\": 32.2396,\n  \"longitude\": 77.1887\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/address",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "address"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Address",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/address/byId/{{address_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "address",
+                                "byId",
+                                "{{address_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Address",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"city\": \"Manali\",\n  \"postalCode\": \"175131\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/address/byId/{{address_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "address",
+                                "byId",
+                                "{{address_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Nearby Addresses",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/address/nearby?latitude=32.2396&longitude=77.1887&radius=10",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "address",
+                                "nearby"
+                            ],
+                            "query": [
+                                {
+                                    "key": "latitude",
+                                    "value": "32.2396"
+                                },
+                                {
+                                    "key": "longitude",
+                                    "value": "77.1887"
+                                },
+                                {
+                                    "key": "radius",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Memories",
+            "item": [
+                {
+                    "name": "Create Memory",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"title\": \"Amazing Sunrise\",\n  \"description\": \"Beautiful sunrise at the peak with family\",\n  \"imageUrls\": [\"https://example.com/memory1.jpg\"],\n  \"bookingId\": \"{{booking_id}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/memories",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Memories",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/memories/my-memories",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories",
+                                "my-memories"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Memories",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/memories?search=sunrise",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "sunrise"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Memory Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/memories/{{memory_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories",
+                                "{{memory_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Memory",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"description\": \"Updated: Absolutely stunning sunrise!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/memories/{{memory_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories",
+                                "{{memory_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Memory",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/memories/{{memory_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "memories",
+                                "{{memory_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Local Guides",
+            "item": [
+                {
+                    "name": "List All Guides",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/local-guide?page=1&limit=10",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Nearby Guides",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/local-guide/nearby?latitude=32.2396&longitude=77.1887&radius=30",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide",
+                                "nearby"
+                            ],
+                            "query": [
+                                {
+                                    "key": "latitude",
+                                    "value": "32.2396"
+                                },
+                                {
+                                    "key": "longitude",
+                                    "value": "77.1887"
+                                },
+                                {
+                                    "key": "radius",
+                                    "value": "30"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Guide Profile (GUIDE)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Rahul Singh\",\n  \"languages\": [\"English\", \"Hindi\"],\n  \"experience\": 5,\n  \"expertise\": [\"Trekking\", \"Cultural Tours\"],\n  \"ratePerDay\": 2000,\n  \"latitude\": 32.2396,\n  \"longitude\": 77.1887,\n  \"bio\": \"Experienced guide with passion for mountains\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/local-guide",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Guides (GUIDE)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/local-guide/provider/my-guides",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide",
+                                "provider",
+                                "my-guides"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Guide Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/local-guide/{{guide_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide",
+                                "{{guide_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Guide (GUIDE)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"ratePerDay\": 2500,\n  \"expertise\": [\"Trekking\", \"Cultural Tours\", \"Photography\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/local-guide/{{guide_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide",
+                                "{{guide_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Guide (GUIDE)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/local-guide/{{guide_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "local-guide",
+                                "{{guide_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Vehicles",
+            "item": [
+                {
+                    "name": "List All Vehicles",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/vehicle?page=1&limit=10",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Nearby Vehicles",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/vehicle/nearby?latitude=32.2396&longitude=77.1887&radius=20",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle",
+                                "nearby"
+                            ],
+                            "query": [
+                                {
+                                    "key": "latitude",
+                                    "value": "32.2396"
+                                },
+                                {
+                                    "key": "longitude",
+                                    "value": "77.1887"
+                                },
+                                {
+                                    "key": "radius",
+                                    "value": "20"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Vehicle (VENDOR)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Toyota Innova\",\n  \"type\": \"SUV\",\n  \"capacity\": 7,\n  \"pricePerKm\": 15,\n  \"ratePerDay\": 3000,\n  \"registrationNumber\": \"DL01AB1234\",\n  \"latitude\": 32.2396,\n  \"longitude\": 77.1887\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/vehicle",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get My Vehicles (VENDOR)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/vehicle/provider/my-vehicles",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle",
+                                "provider",
+                                "my-vehicles"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vehicle Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/vehicle/{{vehicle_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle",
+                                "{{vehicle_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Vehicle (VENDOR)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"ratePerDay\": 3500,\n  \"pricePerKm\": 16\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/vehicle/{{vehicle_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle",
+                                "{{vehicle_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Vehicle (VENDOR)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/vehicle/{{vehicle_id}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "vehicle",
+                                "{{vehicle_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "File Upload (S3)",
+            "item": [
+                {
+                    "name": "Get Presigned URL (Single File)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"uploadType\": \"PERMIT\",\n  \"contextId\": \"{{permit_id}}\",\n  \"fileName\": \"permit_document.pdf\",\n  \"fileType\": \"application/pdf\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/s3/presigned-url",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "s3",
+                                "presigned-url"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Presigned URLs (Bulk)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"uploadType\": \"HOMESTAY\",\n  \"contextId\": \"{{homestay_id}}\",\n  \"files\": [\n    {\"fileName\": \"image1.jpg\", \"fileType\": \"image/jpeg\"},\n    {\"fileName\": \"image2.jpg\", \"fileType\": \"image/jpeg\"}\n  ]\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/s3/presigned-urls",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "s3",
+                                "presigned-urls"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete File",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"key\": \"S3_KEY_PATH\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/s3",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "s3"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Feature Flags",
+            "item": [
+                {
+                    "name": "Get All Feature Flags",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/feature-flag",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "feature-flag"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Check Service Status",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/feature-flag/check/TOUR_VENDOR",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "feature-flag",
+                                "check",
+                                "TOUR_VENDOR"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Feature Flag",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/feature-flag/TOUR_VENDOR",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "feature-flag",
+                                "TOUR_VENDOR"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Feature Flag (ADMIN)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"enabled\": true,\n  \"message\": \"Service is active\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/feature-flag/TOUR_VENDOR",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "feature-flag",
+                                "TOUR_VENDOR"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Admin Dashboard",
+            "item": [
+                {
+                    "name": "Get Dashboard Stats",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/dashboard",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "dashboard"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Bookings (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/bookings?page=1&limit=10&status=CONFIRMED",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "bookings"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "CONFIRMED"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Providers (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/providers?page=1&limit=10&verified=true",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "providers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "verified",
+                                    "value": "true"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Verify Provider (ADMIN)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/provider/{{provider_id}}/verify",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "provider",
+                                "{{provider_id}}",
+                                "verify"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Suspend Provider (ADMIN)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/provider/{{provider_id}}/suspend",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "provider",
+                                "{{provider_id}}",
+                                "suspend"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Payment Analytics (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/payments",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "payments"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Users (ADMIN)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/admin/users?page=1&limit=10",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "admin",
+                                "users"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Health & Monitoring",
+            "item": [
+                {
+                    "name": "Check Redis Health",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/health/redis-health",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "health",
+                                "redis-health"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Queue Stats",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/health/queue-stats",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "health",
+                                "queue-stats"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Flush All Queues (ADMIN)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/health/flush",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "health",
+                                "flush"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "Payouts",
             "item": [
                 {
@@ -1916,6 +3486,36 @@
         },
         {
             "key": "poi_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "user_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "review_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "address_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "memory_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "guide_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "vehicle_id",
             "value": "",
             "type": "string"
         }
