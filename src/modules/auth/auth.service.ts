@@ -210,6 +210,13 @@ export class AuthService {
 				oneTimePassword: otpToken,
 				oneTimeExpire: new Date(otpExpire)
 			},
+			select: {
+				...SAFE_USER_SELECT,
+				roles: true,
+				provider: {
+					select: { id: true },
+				},
+			},
 		});
 
 		const session = await this.databaseService.session.create({
@@ -242,14 +249,14 @@ export class AuthService {
 			console.log("OTP: ", otpString);
 		}
 
+		const safeUser: SafeUser = {
+			...newUser,
+			providerId: newUser.provider?.id,
+		};
+
 		return {
 			message: 'User registered successfully',
-			data: {
-				id: newUser.id,
-				email: newUser.email,
-				firstName: newUser.firstName,
-				lastName: newUser.lastName,
-			}
+			data: safeUser,
 		};
 	}
 
@@ -272,7 +279,14 @@ export class AuthService {
 				isVerified: true,
 				oneTimePassword: null,
 				oneTimeExpire: null
-			}
+			},
+			select: {
+				...SAFE_USER_SELECT,
+				roles: true,
+				provider: {
+					select: { id: true },
+				},
+			},
 		});
 
 		const onboardingResult = await this.onboardingService.checkAndCompleteOnboardingByEmail(
@@ -302,14 +316,15 @@ export class AuthService {
 		this.sendToken(res, "ACCESS_TOKEN", accessToken);
 		this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
+		const safeUser: SafeUser = {
+			...updatedUser,
+			providerId: updatedUser.provider?.id,
+		};
+
 		// Return response with onboarding status
 		const response: any = {
 			message: 'Email verified successfully',
-			user: {
-				id: updatedUser.id,
-				email: updatedUser.email,
-				isVerified: updatedUser.isVerified,
-			},
+			user: safeUser,
 		};
 
 		if (onboardingResult?.requiresCompletion) {
@@ -384,6 +399,14 @@ export class AuthService {
 
 		const user = await this.databaseService.user.findFirst({
 			where: { email },
+			select: {
+				...SAFE_USER_SELECT,
+				passwordHash: true,
+				roles: true,
+				provider: {
+					select: { id: true },
+				},
+			},
 		});
 		if (!user) throw new BadRequestException('Invalid credentials.');
 		if (user.isDeleted) throw new ForbiddenException('This account has been deleted.');
@@ -416,14 +439,15 @@ export class AuthService {
 		this.sendToken(res, "ACCESS_TOKEN", accessToken);
 		this.sendToken(res, "REFRESH_TOKEN", clientRefreshToken);
 
+		const { passwordHash, ...userWithoutPassword } = user;
+		const safeUser: SafeUser = {
+			...userWithoutPassword,
+			providerId: user.provider?.id,
+		};
+
 		return {
 			message: 'User logged in successfully',
-			data: {
-				id: user.id,
-				email: user.email,
-				firstName: user.firstName,
-				lastName: user.lastName,
-			}
+			data: safeUser,
 		};
 	}
 
