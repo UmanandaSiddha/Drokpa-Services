@@ -1,4 +1,8 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import {
+    IsArray, IsBoolean, IsEnum, IsInt,
+    IsOptional, IsString, Min,
+} from 'class-validator';
+import { TourType } from 'generated/prisma/enums';
 
 export class CreateTourDto {
     @IsString()
@@ -7,24 +11,35 @@ export class CreateTourDto {
     @IsString()
     description: string;
 
+    @IsEnum(TourType)
+    @IsOptional()
+    type?: TourType;
+
     @IsInt()
+    @Min(1)
     price: number;
 
     @IsInt()
+    @Min(1)
     duration: number;
 
     @IsArray()
-    imageUrls: string[];
+    @IsString({ each: true })
+    @IsOptional()
+    imageUrls?: string[];
 
     @IsArray()
-    tags: string[];
+    @IsString({ each: true })
+    @IsOptional()
+    tags?: string[];
 
     @IsOptional()
     @IsInt()
+    @Min(1)
     maxCapacity?: number;
 
-    @IsString()
     @IsOptional()
+    @IsString()
     addressId?: string;
 
     @IsOptional()
@@ -32,19 +47,25 @@ export class CreateTourDto {
     about?: string;
 
     @IsArray()
-    included: string[];
-
-    @IsArray()
-    notIncluded: string[];
-
-    @IsArray()
-    highlights: string[];
-
-    @IsString()
+    @IsString({ each: true })
     @IsOptional()
+    included?: string[];
+
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    notIncluded?: string[];
+
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    highlights?: string[];
+
+    @IsOptional()
+    @IsString()
     brochure?: string;
 
-    @IsBoolean()
     @IsOptional()
+    @IsBoolean()
     isActive?: boolean;
 }

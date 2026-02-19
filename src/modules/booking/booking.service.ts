@@ -1,47 +1,205 @@
-import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
-import { DatabaseService } from "src/services/database/database.service";
-import { EmailService } from "src/services/email/email.service";
-import { AdminService } from "src/modules/admin/admin.service";
-import { CreateTourBookingDto } from "./dto/create-tour-booking.dto";
-import { CreateHomestayBookingDto } from "./dto/create-homestay-booking.dto";
-import { CreateVehicleBookingDto } from "./dto/create-vehicle-booking.dto";
-import { CreateGuideBookingDto } from "./dto/create-guide-booking.dto";
-import { ConfirmBookingDto } from "./dto/confirm-booking.dto";
-import { RejectBookingDto } from "./dto/reject-booking.dto";
-import { BookingStatus, BookingSource, ProviderType, PermitStatus } from "generated/prisma/enums";
+import {
+    BadRequestException,
+    Injectable,
+    NotFoundException,
+    ForbiddenException,
+    Logger,
+} from '@nestjs/common';
+import { DatabaseService } from 'src/services/database/database.service';
+import { EmailService } from 'src/services/email/email.service';
+import { AdminService } from 'src/modules/admin/admin.service';
+import { CreateTourBookingDto } from './dto/create-tour-booking.dto';
+import { CreateHomestayBookingDto } from './dto/create-homestay-booking.dto';
+import { CreateVehicleBookingDto } from './dto/create-vehicle-booking.dto';
+import { CreateGuideBookingDto } from './dto/create-guide-booking.dto';
+import { ConfirmBookingDto } from './dto/confirm-booking.dto';
+import { RejectBookingDto } from './dto/reject-booking.dto';
+import {
+    BookingStatus,
+    BookingSource,
+    ProviderType,
+    PermitStatus,
+} from 'generated/prisma/enums';
+
+// Payment window: how long a user has to complete payment after confirmation
+const PAYMENT_WINDOW_MINUTES = 30;
 
 @Injectable()
 export class BookingService {
+    private readonly logger = new Logger(BookingService.name);
+
     constructor(
         private readonly databaseService: DatabaseService,
         private readonly emailService: EmailService,
         private readonly adminService: AdminService,
     ) { }
 
-    async createTourBooking(userId: string, payload: CreateTourBookingDto) {
-        const tour = await this.databaseService.tour.findUnique({
-            where: { id: payload.tourId },
+    // ─────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────
+
+    /**
+     * Resolves the providerId that owns a given product.
+     * TOUR_VENDOR is platform-managed — providers cannot confirm/reject tours.
+     */
+    private async resolveProductProviderId(
+        productType: ProviderType,
+        productId: string,
+    ): Promise<string | null> {
+        switch (productType) {
+            case ProviderType.HOMESTAY_HOST: {
+                // productId on a homestay BookingItem is the roomId
+                const room = await this.databaseService.homestayRoom.findUnique({
+                    where: { id: productId },
+                    include: { homestay: { select: { providerId: true } } },
+                });
+                return room?.homestay.providerId ?? null;
+            }
+            case ProviderType.VEHICLE_PARTNER: {
+                const vehicle = await this.databaseService.vehicle.findUnique({
+                    where: { id: productId },
+                    select: { providerId: true },
+                });
+                return vehicle?.providerId ?? null;
+            }
+            case ProviderType.LOCAL_GUIDE: {
+                const guide = await this.databaseService.localGuide.findUnique({
+                    where: { id: productId },
+                    select: { providerId: true },
+                });
+                return guide?.providerId ?? null;
+            }
+            default:
+                // TOUR_VENDOR, ACTIVITY_VENDOR, ILP_VENDOR — platform-managed, no provider owner
+                return null;
+        }
+    }
+
+    /**
+     * Resolves and returns the provider record for a given userId.
+     * Throws ForbiddenException (not BadRequestException) if the user has no provider profile.
+     */
+    private async resolveProvider(userId: string) {
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { provider: { select: { id: true } } },
         });
-
-        if (!tour || !tour.isActive) {
-            throw new BadRequestException('Tour not available');
+        if (!user?.provider) {
+            throw new ForbiddenException('User does not have a provider profile');
         }
+        return user.provider;
+    }
 
-        if (payload.guests.length > tour.maxCapacity) {
-            throw new BadRequestException(`Maximum capacity is ${tour.maxCapacity} guests`);
+    /**
+     * Sends booking request notifications to the user, an optional provider,
+     * and all admins. Failures are logged but never thrown — notifications
+     * should never break the booking flow.
+     */
+    private async sendBookingNotifications(payload: {
+        bookingId: string;
+        userId: string;
+        productLabel: string;
+        providerEmail?: string | null;
+    }): Promise<void> {
+        try {
+            const user = await this.databaseService.user.findUnique({
+                where: { id: payload.userId },
+                select: { email: true, firstName: true, lastName: true },
+            });
+
+            const userName = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim();
+
+            if (user?.email) {
+                await this.emailService.queueEmail({
+                    to: user.email,
+                    subject: 'Booking Request Received - Drokpa',
+                    html: `
+                        <p>Dear ${userName},</p>
+                        <p>Your ${payload.productLabel} booking request has been received.</p>
+                        <p><strong>Booking ID:</strong> ${payload.bookingId}</p>
+                        <p>We will notify you once it is reviewed.</p>
+                        <p>Thank you for choosing Drokpa!</p>
+                    `,
+                });
+            }
+
+            if (payload.providerEmail) {
+                await this.emailService.sendBookingRequestNotification(
+                    payload.providerEmail,
+                    { id: payload.bookingId },
+                );
+            }
+
+            const adminEmails = await this.adminService.getAdminEmails();
+            await Promise.allSettled(
+                adminEmails.map(adminEmail =>
+                    this.emailService.queueEmail({
+                        to: adminEmail,
+                        subject: `New ${payload.productLabel} Booking Request - Drokpa`,
+                        html: `
+                            <p>Dear Admin,</p>
+                            <p>A new ${payload.productLabel} booking request has been received.</p>
+                            <p><strong>Booking ID:</strong> ${payload.bookingId}</p>
+                            <p><strong>User:</strong> ${userName} (${user?.email})</p>
+                        `,
+                    }),
+                ),
+            );
+        } catch (err) {
+            // Notification failures must never break the booking flow
+            this.logger.error('Booking notification failed', {
+                bookingId: payload.bookingId,
+                error: err,
+            });
         }
+    }
 
-        if (payload.guests.length === 0) {
+    // ─────────────────────────────────────────
+    // Tour Booking
+    // ─────────────────────────────────────────
+
+    async createTourBooking(userId: string, dto: CreateTourBookingDto) {
+        if (dto.guests.length === 0) {
             throw new BadRequestException('At least one guest is required');
         }
 
-        const basePrice = tour.finalPrice || tour.basePrice || 0;
-        const discount = tour.discount || 0;
-        const finalPrice = Math.round(basePrice * (1 - discount / 100));
-        const totalAmount = finalPrice * payload.guests.length;
+        const tour = await this.databaseService.tour.findUnique({
+            where: { id: dto.tourId },
+        });
 
-        return this.databaseService.$transaction(async tx => {
-            const booking = await tx.booking.create({
+        if (!tour || !tour.isActive) {
+            throw new BadRequestException('Tour is not available');
+        }
+
+        // Check remaining capacity against already-booked seats —
+        // never against maxCapacity alone (that ignores existing bookings)
+        const bookedResult = await this.databaseService.bookingItem.aggregate({
+            where: {
+                productId: tour.id,
+                productType: ProviderType.TOUR_VENDOR,
+                booking: {
+                    status: { in: [BookingStatus.CONFIRMED, BookingStatus.AWAITING_PAYMENT, BookingStatus.REQUESTED] },
+                },
+            },
+            _sum: { quantity: true },
+        });
+        const alreadyBooked = bookedResult._sum.quantity ?? 0;
+        const remaining = tour.maxCapacity - alreadyBooked;
+
+        if (dto.guests.length > remaining) {
+            throw new BadRequestException(
+                `Only ${remaining} spot${remaining === 1 ? '' : 's'} remaining for this tour`,
+            );
+        }
+
+        // Use stored finalPrice — it's already discount-applied and kept in sync
+        const basePrice = tour.basePrice;
+        const discount = tour.discount;
+        const finalPrice = tour.finalPrice;
+        const totalAmount = finalPrice * dto.guests.length;
+
+        const booking = await this.databaseService.$transaction(async tx => {
+            const newBooking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
@@ -52,21 +210,20 @@ export class BookingService {
 
             const item = await tx.bookingItem.create({
                 data: {
-                    bookingId: booking.id,
+                    bookingId: newBooking.id,
                     productType: ProviderType.TOUR_VENDOR,
                     productId: tour.id,
-                    startDate: new Date(payload.startDate),
-                    quantity: payload.guests.length,
+                    startDate: new Date(dto.startDate),
+                    quantity: dto.guests.length,
                     basePrice,
                     discount,
                     finalPrice,
                     totalAmount,
-                    permitRequired: true, // Tours require permits
+                    permitRequired: true,
                 },
             });
 
-            // Create guests and permits
-            for (const guest of payload.guests) {
+            for (const guest of dto.guests) {
                 const bookingGuest = await tx.bookingGuest.create({
                     data: {
                         bookingItemId: item.id,
@@ -74,63 +231,41 @@ export class BookingService {
                         contactNumber: guest.contactNumber,
                         age: guest.age,
                         gender: guest.gender,
+                        email: guest.email,
                     },
                 });
 
-                // Create permit for each guest
+                // Advance to COLLECTING_DOCS only if documents were already provided
+                const hasDocuments = !!(guest.passportPhotoId && guest.identityProofId);
+
                 await tx.permit.create({
                     data: {
                         bookingItemId: item.id,
                         participantId: bookingGuest.id,
-                        status: PermitStatus.COLLECTING_DOCS,
+                        status: hasDocuments ? PermitStatus.COLLECTING_DOCS : PermitStatus.REQUIRED,
                         ...(guest.passportPhotoId && { passportPhotoId: guest.passportPhotoId }),
                         ...(guest.identityProofId && { identityProofId: guest.identityProofId }),
                     },
                 });
             }
 
-            return booking;
-        }).then(async (booking) => {
-            // Send notifications after transaction
-            const user = await this.databaseService.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true, lastName: true },
-            });
-
-            // Notify user
-            if (user?.email) {
-                await this.emailService.queueEmail({
-                    to: user.email,
-                    subject: 'Booking Request Received - Drokpa',
-                    html: `
-                        <p>Dear ${user.firstName} ${user.lastName},</p>
-                        <p>Your tour booking request has been received successfully.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p>We will review your request and notify you once it's confirmed.</p>
-                        <p>Thank you for choosing Drokpa!</p>
-                    `,
-                });
-            }
-
-            // Notify all admins
-            const adminEmails = await this.adminService.getAdminEmails();
-            for (const adminEmail of adminEmails) {
-                await this.emailService.queueEmail({
-                    to: adminEmail,
-                    subject: 'New Tour Booking Request - Drokpa',
-                    html: `
-                        <p>Dear Admin,</p>
-                        <p>A new tour booking request has been received.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
-                        <p>Please review and process the booking.</p>
-                    `,
-                });
-            }
-
-            return booking;
+            return newBooking;
         });
+
+        // Notifications run after transaction — never inside it
+        await this.sendBookingNotifications({
+            bookingId: booking.id,
+            userId,
+            productLabel: 'tour',
+            // Tours are platform-managed — no provider to notify
+        });
+
+        return booking;
     }
+
+    // ─────────────────────────────────────────
+    // Homestay Booking
+    // ─────────────────────────────────────────
 
     async createHomestayBooking(userId: string, dto: CreateHomestayBookingDto) {
         const checkIn = new Date(dto.checkIn);
@@ -140,52 +275,57 @@ export class BookingService {
             throw new BadRequestException('Check-out date must be after check-in date');
         }
 
-        return this.databaseService.$transaction(async tx => {
-            const room = await tx.homestayRoom.findUnique({
-                where: { id: dto.roomId },
-                include: {
-                    homestay: {
-                        include: {
-                            provider: {
-                                include: {
-                                    user: true,
-                                },
-                            },
-                        },
+        const nights = Math.ceil(
+            (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        const room = await this.databaseService.homestayRoom.findUnique({
+            where: { id: dto.roomId },
+            include: {
+                homestay: {
+                    include: {
+                        provider: { include: { user: { select: { email: true } } } },
                     },
                 },
-            });
+            },
+        });
 
-            if (!room || !room.homestay.isActive) {
-                throw new BadRequestException('Room not available');
-            }
+        if (!room || !room.isActive || !room.homestay.isActive) {
+            throw new BadRequestException('Room is not available');
+        }
 
-            // Check availability
+        const providerEmail = room.homestay.provider.user?.email ?? null;
+
+        const booking = await this.databaseService.$transaction(async tx => {
+            // Lock availability rows for the date range inside the transaction
             const availability = await tx.roomAvailability.findMany({
                 where: {
                     roomId: dto.roomId,
-                    date: {
-                        gte: checkIn,
-                        lt: checkOut,
-                    },
+                    date: { gte: checkIn, lt: checkOut },
                 },
             });
 
-            if (availability.length === 0) {
-                throw new BadRequestException('Room not available for selected dates');
+            // Every night in the range must have a configured availability record
+            if (availability.length < nights) {
+                throw new BadRequestException(
+                    'Room availability is not configured for all selected dates',
+                );
             }
 
-            if (availability.some(a => a.available < dto.rooms)) {
-                throw new BadRequestException('Not enough rooms available');
+            // All nights must have enough rooms
+            const insufficientDate = availability.find(a => a.available < dto.rooms);
+            if (insufficientDate) {
+                throw new BadRequestException(
+                    `Not enough rooms available on ${insufficientDate.date.toISOString().split('T')[0]}`,
+                );
             }
 
-            const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-            const basePrice = room.basePrice || 0;
-            const discount = room.discount || 0;
-            const finalPrice = Math.round(basePrice * (1 - discount / 100));
+            const basePrice = room.basePrice;
+            const discount = room.discount;
+            const finalPrice = room.finalPrice;
             const totalAmount = finalPrice * nights * dto.rooms;
 
-            const booking = await tx.booking.create({
+            const newBooking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
@@ -194,9 +334,9 @@ export class BookingService {
                 },
             });
 
-            await tx.bookingItem.create({
+            const item = await tx.bookingItem.create({
                 data: {
-                    bookingId: booking.id,
+                    bookingId: newBooking.id,
                     productType: ProviderType.HOMESTAY_HOST,
                     productId: dto.roomId,
                     startDate: checkIn,
@@ -210,72 +350,45 @@ export class BookingService {
                 },
             });
 
-            return booking;
-        }).then(async (booking) => {
-            // Send notifications after transaction
-            const user = await this.databaseService.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true, lastName: true },
-            });
-
-            // Fetch room again for notifications (outside transaction scope)
-            const room = await this.databaseService.homestayRoom.findUnique({
-                where: { id: dto.roomId },
-                include: {
-                    homestay: {
-                        include: {
-                            provider: {
-                                include: {
-                                    user: true,
-                                },
-                            },
-                        },
-                    },
+            // RoomBooking links the booking item to the room with structured dates
+            await tx.roomBooking.create({
+                data: {
+                    bookingItemId: item.id,
+                    roomId: dto.roomId,
+                    checkIn,
+                    checkOut,
+                    guests: dto.guests ?? 1,
+                    specialRequests: dto.specialRequests,
                 },
             });
 
-            // Notify user
-            if (user?.email) {
-                await this.emailService.queueEmail({
-                    to: user.email,
-                    subject: 'Booking Request Received - Drokpa',
-                    html: `
-                        <p>Dear ${user.firstName} ${user.lastName},</p>
-                        <p>Your homestay booking request has been received successfully.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p>The host will review your request and notify you once it's confirmed.</p>
-                        <p>Thank you for choosing Drokpa!</p>
-                    `,
-                });
-            }
+            // Decrement availability at request time — prevents double-booking
+            // between REQUESTED and CONFIRMED states. Re-incremented on REJECTED.
+            await Promise.all(
+                availability.map(avail =>
+                    tx.roomAvailability.update({
+                        where: { id: avail.id },
+                        data: { available: { decrement: dto.rooms } },
+                    }),
+                ),
+            );
 
-            // Notify provider
-            if (room?.homestay.provider.user?.email) {
-                await this.emailService.sendBookingRequestNotification(
-                    room.homestay.provider.user.email,
-                    { id: booking.id },
-                );
-            }
-
-            // Notify all admins
-            const adminEmails = await this.adminService.getAdminEmails();
-            for (const adminEmail of adminEmails) {
-                await this.emailService.queueEmail({
-                    to: adminEmail,
-                    subject: 'New Homestay Booking Request - Drokpa',
-                    html: `
-                        <p>Dear Admin,</p>
-                        <p>A new homestay booking request has been received.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
-                        <p>Please monitor the booking status.</p>
-                    `,
-                });
-            }
-
-            return booking;
+            return newBooking;
         });
+
+        await this.sendBookingNotifications({
+            bookingId: booking.id,
+            userId,
+            productLabel: 'homestay',
+            providerEmail,
+        });
+
+        return booking;
     }
+
+    // ─────────────────────────────────────────
+    // Vehicle Booking
+    // ─────────────────────────────────────────
 
     async createVehicleBooking(userId: string, dto: CreateVehicleBookingDto) {
         const startDate = new Date(dto.startDate);
@@ -288,26 +401,25 @@ export class BookingService {
         const vehicle = await this.databaseService.vehicle.findUnique({
             where: { id: dto.vehicleId },
             include: {
-                provider: {
-                    include: {
-                        user: true,
-                    },
-                },
+                provider: { include: { user: { select: { email: true } } } },
             },
         });
 
         if (!vehicle || !vehicle.isActive) {
-            throw new BadRequestException('Vehicle not available');
+            throw new BadRequestException('Vehicle is not available');
         }
 
-        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        const basePrice = vehicle.basePricePerDay || 0;
+        const days = Math.ceil(
+            (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const basePrice = vehicle.basePricePerDay;
         const discount = 0;
         const finalPrice = basePrice;
         const totalAmount = finalPrice * days * dto.quantity;
+        const providerEmail = vehicle.provider.user?.email ?? null;
 
-        return this.databaseService.$transaction(async tx => {
-            const booking = await tx.booking.create({
+        const booking = await this.databaseService.$transaction(async tx => {
+            const newBooking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
@@ -318,7 +430,7 @@ export class BookingService {
 
             await tx.bookingItem.create({
                 data: {
-                    bookingId: booking.id,
+                    bookingId: newBooking.id,
                     productType: ProviderType.VEHICLE_PARTNER,
                     productId: vehicle.id,
                     startDate,
@@ -332,56 +444,22 @@ export class BookingService {
                 },
             });
 
-            return booking;
-        }).then(async (booking) => {
-            // Send notifications after transaction
-            const user = await this.databaseService.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true, lastName: true },
-            });
-
-            // Notify user
-            if (user?.email) {
-                await this.emailService.queueEmail({
-                    to: user.email,
-                    subject: 'Booking Request Received - Drokpa',
-                    html: `
-                        <p>Dear ${user.firstName} ${user.lastName},</p>
-                        <p>Your vehicle booking request has been received successfully.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p>The provider will review your request and notify you once it's confirmed.</p>
-                        <p>Thank you for choosing Drokpa!</p>
-                    `,
-                });
-            }
-
-            // Notify provider
-            if (vehicle.provider.user?.email) {
-                await this.emailService.sendBookingRequestNotification(
-                    vehicle.provider.user.email,
-                    { id: booking.id },
-                );
-            }
-
-            // Notify all admins
-            const adminEmails = await this.adminService.getAdminEmails();
-            for (const adminEmail of adminEmails) {
-                await this.emailService.queueEmail({
-                    to: adminEmail,
-                    subject: 'New Vehicle Booking Request - Drokpa',
-                    html: `
-                        <p>Dear Admin,</p>
-                        <p>A new vehicle booking request has been received.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
-                        <p>Please monitor the booking status.</p>
-                    `,
-                });
-            }
-
-            return booking;
+            return newBooking;
         });
+
+        await this.sendBookingNotifications({
+            bookingId: booking.id,
+            userId,
+            productLabel: 'vehicle',
+            providerEmail,
+        });
+
+        return booking;
     }
+
+    // ─────────────────────────────────────────
+    // Guide Booking
+    // ─────────────────────────────────────────
 
     async createGuideBooking(userId: string, dto: CreateGuideBookingDto) {
         const startDate = new Date(dto.startDate);
@@ -394,26 +472,25 @@ export class BookingService {
         const guide = await this.databaseService.localGuide.findUnique({
             where: { id: dto.guideId },
             include: {
-                provider: {
-                    include: {
-                        user: true,
-                    },
-                },
+                provider: { include: { user: { select: { email: true } } } },
             },
         });
 
         if (!guide || !guide.isActive) {
-            throw new BadRequestException('Guide not available');
+            throw new BadRequestException('Guide is not available');
         }
 
-        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        const basePrice = guide.basePricePerDay || 0;
+        const days = Math.ceil(
+            (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const basePrice = guide.basePricePerDay;
         const discount = 0;
         const finalPrice = basePrice;
         const totalAmount = finalPrice * days * dto.quantity;
+        const providerEmail = guide.provider.user?.email ?? null;
 
-        return this.databaseService.$transaction(async tx => {
-            const booking = await tx.booking.create({
+        const booking = await this.databaseService.$transaction(async tx => {
+            const newBooking = await tx.booking.create({
                 data: {
                     userId,
                     status: BookingStatus.REQUESTED,
@@ -424,7 +501,7 @@ export class BookingService {
 
             await tx.bookingItem.create({
                 data: {
-                    bookingId: booking.id,
+                    bookingId: newBooking.id,
                     productType: ProviderType.LOCAL_GUIDE,
                     productId: guide.id,
                     startDate,
@@ -438,247 +515,224 @@ export class BookingService {
                 },
             });
 
-            return booking;
-        }).then(async (booking) => {
-            // Send notifications after transaction
-            const user = await this.databaseService.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true, lastName: true },
-            });
-
-            // Notify user
-            if (user?.email) {
-                await this.emailService.queueEmail({
-                    to: user.email,
-                    subject: 'Booking Request Received - Drokpa',
-                    html: `
-                        <p>Dear ${user.firstName} ${user.lastName},</p>
-                        <p>Your local guide booking request has been received successfully.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p>The guide will review your request and notify you once it's confirmed.</p>
-                        <p>Thank you for choosing Drokpa!</p>
-                    `,
-                });
-            }
-
-            // Notify provider
-            if (guide.provider.user?.email) {
-                await this.emailService.sendBookingRequestNotification(
-                    guide.provider.user.email,
-                    { id: booking.id },
-                );
-            }
-
-            // Notify all admins
-            const adminEmails = await this.adminService.getAdminEmails();
-            for (const adminEmail of adminEmails) {
-                await this.emailService.queueEmail({
-                    to: adminEmail,
-                    subject: 'New Local Guide Booking Request - Drokpa',
-                    html: `
-                        <p>Dear Admin,</p>
-                        <p>A new local guide booking request has been received.</p>
-                        <p><strong>Booking ID:</strong> ${booking.id}</p>
-                        <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
-                        <p>Please monitor the booking status.</p>
-                    `,
-                });
-            }
-
-            return booking;
+            return newBooking;
         });
+
+        await this.sendBookingNotifications({
+            bookingId: booking.id,
+            userId,
+            productLabel: 'local guide',
+            providerEmail,
+        });
+
+        return booking;
     }
+
+    // ─────────────────────────────────────────
+    // Confirm Booking (Provider action)
+    // ─────────────────────────────────────────
 
     async confirmBooking(bookingId: string, userId: string, dto: ConfirmBookingDto) {
-        // Get user's provider
-        const user = await this.databaseService.user.findUnique({
-            where: { id: userId },
-            include: { provider: true },
-        });
-
-        if (!user?.provider) {
-            throw new BadRequestException('User is not a provider');
-        }
-
-        const providerId = user.provider.id;
-
-        const booking = await this.databaseService.booking.findUnique({
-            where: { id: bookingId },
-            include: {
-                items: {
-                    include: {
-                        booking: true,
-                    },
-                },
-                user: true,
-            },
-        });
-
-        if (!booking) {
-            throw new NotFoundException('Booking not found');
-        }
-
-        // Verify provider owns the product
-        const item = booking.items[0];
-        let productProviderId: string | null = null;
-
-        if (item.productType === ProviderType.HOMESTAY_HOST) {
-            // For homestay, productId is roomId
-            const room = await this.databaseService.homestayRoom.findUnique({
-                where: { id: item.productId },
-                include: { homestay: true },
-            });
-            productProviderId = room?.homestay.providerId || null;
-        } else if (item.productType === ProviderType.VEHICLE_PARTNER) {
-            const vehicle = await this.databaseService.vehicle.findUnique({
-                where: { id: item.productId },
-            });
-            productProviderId = vehicle?.providerId || null;
-        } else if (item.productType === ProviderType.LOCAL_GUIDE) {
-            const guide = await this.databaseService.localGuide.findUnique({
-                where: { id: item.productId },
-            });
-            productProviderId = guide?.providerId || null;
-        }
-
-        if (productProviderId !== providerId) {
-            throw new ForbiddenException('You do not have permission to confirm this booking');
-        }
-
-        if (booking.status !== BookingStatus.REQUESTED) {
-            throw new BadRequestException('Booking cannot be confirmed in current status');
-        }
-
-        // Use transaction for homestay availability updates
-        return this.databaseService.$transaction(async tx => {
-            // For homestay bookings, reduce availability when confirming
-            if (item.productType === ProviderType.HOMESTAY_HOST && item.startDate && item.endDate) {
-                const checkIn = new Date(item.startDate);
-                const checkOut = new Date(item.endDate);
-
-                const availability = await tx.roomAvailability.findMany({
-                    where: {
-                        roomId: item.productId,
-                        date: {
-                            gte: checkIn,
-                            lt: checkOut,
-                        },
-                    },
-                });
-
-                // Check availability first
-                for (const avail of availability) {
-                    if (avail.available < item.quantity) {
-                        throw new BadRequestException('Not enough rooms available for confirmation');
-                    }
-                }
-
-                // Reduce availability for each date
-                for (const avail of availability) {
-                    await tx.roomAvailability.update({
-                        where: { id: avail.id },
-                        data: { available: { decrement: item.quantity } },
-                    });
-                }
-            }
-
-            const updatedBooking = await tx.booking.update({
-                where: { id: bookingId },
-                data: {
-                    status: BookingStatus.AWAITING_PAYMENT,
-                    confirmedAt: new Date(),
-                },
-            });
-
-            // Send email to user
-            if (booking.user?.email) {
-                await this.emailService.queueEmail({
-                    to: booking.user.email,
-                    subject: 'Booking Confirmed - Payment Required',
-                    html: `<p>Your booking has been confirmed. Please proceed with payment.</p><p>Booking ID: ${bookingId}</p>`,
-                });
-            }
-
-            return updatedBooking;
-        });
-    }
-
-    async rejectBooking(bookingId: string, userId: string, dto: RejectBookingDto) {
-        // Get user's provider
-        const user = await this.databaseService.user.findUnique({
-            where: { id: userId },
-            include: { provider: true },
-        });
-
-        if (!user?.provider) {
-            throw new BadRequestException('User is not a provider');
-        }
-
-        const providerId = user.provider.id;
+        const provider = await this.resolveProvider(userId);
 
         const booking = await this.databaseService.booking.findUnique({
             where: { id: bookingId },
             include: {
                 items: true,
-                user: true,
+                user: { select: { email: true, firstName: true, lastName: true } },
             },
         });
 
-        if (!booking) {
-            throw new NotFoundException('Booking not found');
-        }
-
-        // Verify provider owns the product (similar to confirm)
-        const item = booking.items[0];
-        let productProviderId: string | null = null;
-
-        if (item.productType === ProviderType.HOMESTAY_HOST) {
-            // For homestay, productId is roomId
-            const room = await this.databaseService.homestayRoom.findUnique({
-                where: { id: item.productId },
-                include: { homestay: true },
-            });
-            productProviderId = room?.homestay.providerId || null;
-        } else if (item.productType === ProviderType.VEHICLE_PARTNER) {
-            const vehicle = await this.databaseService.vehicle.findUnique({
-                where: { id: item.productId },
-            });
-            productProviderId = vehicle?.providerId || null;
-        } else if (item.productType === ProviderType.LOCAL_GUIDE) {
-            const guide = await this.databaseService.localGuide.findUnique({
-                where: { id: item.productId },
-            });
-            productProviderId = guide?.providerId || null;
-        }
-
-        if (productProviderId !== providerId) {
-            throw new ForbiddenException('You do not have permission to reject this booking');
-        }
-
+        if (!booking) throw new NotFoundException('Booking not found');
         if (booking.status !== BookingStatus.REQUESTED) {
-            throw new BadRequestException('Booking cannot be rejected in current status');
+            throw new BadRequestException(
+                `Booking cannot be confirmed from status: ${booking.status}`,
+            );
         }
+
+        const item = booking.items[0];
+
+        // Tours are platform-managed — providers cannot confirm them
+        if (item.productType === ProviderType.TOUR_VENDOR) {
+            throw new ForbiddenException(
+                'Tour bookings are managed by the platform. Contact admin.',
+            );
+        }
+
+        const productProviderId = await this.resolveProductProviderId(
+            item.productType,
+            item.productId,
+        );
+
+        if (!productProviderId || productProviderId !== provider.id) {
+            throw new ForbiddenException(
+                'You do not have permission to confirm this booking',
+            );
+        }
+
+        // For homestay: availability was already decremented at request time.
+        // Re-validate here to catch edge cases (manual admin changes, etc.)
+        if (
+            item.productType === ProviderType.HOMESTAY_HOST &&
+            item.startDate &&
+            item.endDate
+        ) {
+            const availability = await this.databaseService.roomAvailability.findMany({
+                where: {
+                    roomId: item.productId,
+                    date: { gte: item.startDate, lt: item.endDate },
+                },
+            });
+
+            const insufficient = availability.find(a => a.available < 0);
+            if (insufficient) {
+                throw new BadRequestException(
+                    'Room availability is no longer sufficient for this booking',
+                );
+            }
+        }
+
+        const expiresAt = new Date(Date.now() + PAYMENT_WINDOW_MINUTES * 60 * 1000);
 
         const updatedBooking = await this.databaseService.booking.update({
             where: { id: bookingId },
             data: {
-                status: BookingStatus.REJECTED,
+                status: BookingStatus.AWAITING_PAYMENT,
+                confirmedAt: new Date(),
+                expiresAt,
             },
         });
 
-        // Send email to user
+        // Notifications after DB write — never inside transaction
         if (booking.user?.email) {
             await this.emailService.queueEmail({
                 to: booking.user.email,
-                subject: 'Booking Rejected',
-                html: `<p>Your booking has been rejected.</p><p>Reason: ${dto.reason}</p><p>Booking ID: ${bookingId}</p>`,
-            });
+                subject: 'Booking Confirmed — Payment Required',
+                html: `
+                    <p>Dear ${booking.user.firstName},</p>
+                    <p>Your booking has been confirmed. Please complete your payment within ${PAYMENT_WINDOW_MINUTES} minutes.</p>
+                    <p><strong>Booking ID:</strong> ${bookingId}</p>
+                    <p><strong>Payment deadline:</strong> ${expiresAt.toISOString()}</p>
+                `,
+            }).catch(err =>
+                this.logger.error('Failed to send confirm email', err),
+            );
         }
 
         return updatedBooking;
     }
 
-    async getBooking(bookingId: string, userId?: string, providerId?: string) {
+    // ─────────────────────────────────────────
+    // Reject Booking (Provider action)
+    // ─────────────────────────────────────────
+
+    async rejectBooking(bookingId: string, userId: string, dto: RejectBookingDto) {
+        const provider = await this.resolveProvider(userId);
+
+        const booking = await this.databaseService.booking.findUnique({
+            where: { id: bookingId },
+            include: {
+                items: true,
+                user: { select: { email: true, firstName: true, lastName: true } },
+            },
+        });
+
+        if (!booking) throw new NotFoundException('Booking not found');
+        if (booking.status !== BookingStatus.REQUESTED) {
+            throw new BadRequestException(
+                `Booking cannot be rejected from status: ${booking.status}`,
+            );
+        }
+
+        const item = booking.items[0];
+
+        if (item.productType === ProviderType.TOUR_VENDOR) {
+            throw new ForbiddenException(
+                'Tour bookings are managed by the platform. Contact admin.',
+            );
+        }
+
+        const productProviderId = await this.resolveProductProviderId(
+            item.productType,
+            item.productId,
+        );
+
+        if (!productProviderId || productProviderId !== provider.id) {
+            throw new ForbiddenException(
+                'You do not have permission to reject this booking',
+            );
+        }
+
+        // Re-increment availability for homestay on rejection
+        // (was decremented at request time to prevent double-booking)
+        if (
+            item.productType === ProviderType.HOMESTAY_HOST &&
+            item.startDate &&
+            item.endDate
+        ) {
+            await this.databaseService.$transaction(async tx => {
+                const availability = await tx.roomAvailability.findMany({
+                    where: {
+                        roomId: item.productId,
+                        date: { gte: item.startDate!, lt: item.endDate! },
+                    },
+                });
+
+                await Promise.all(
+                    availability.map(avail =>
+                        tx.roomAvailability.update({
+                            where: { id: avail.id },
+                            data: { available: { increment: item.quantity } },
+                        }),
+                    ),
+                );
+
+                await tx.booking.update({
+                    where: { id: bookingId },
+                    data: {
+                        status: BookingStatus.REJECTED,
+                        cancellationReason: dto.reason,
+                        cancelledAt: new Date(),
+                    },
+                });
+            });
+        } else {
+            await this.databaseService.booking.update({
+                where: { id: bookingId },
+                data: {
+                    status: BookingStatus.REJECTED,
+                    cancellationReason: dto.reason,
+                    cancelledAt: new Date(),
+                },
+            });
+        }
+
+        if (booking.user?.email) {
+            await this.emailService.queueEmail({
+                to: booking.user.email,
+                subject: 'Booking Request Rejected',
+                html: `
+                    <p>Dear ${booking.user.firstName},</p>
+                    <p>Unfortunately your booking request has been rejected.</p>
+                    <p><strong>Booking ID:</strong> ${bookingId}</p>
+                    ${dto.reason ? `<p><strong>Reason:</strong> ${dto.reason}</p>` : ''}
+                    <p>Please feel free to explore other options on Drokpa.</p>
+                `,
+            }).catch(err =>
+                this.logger.error('Failed to send rejection email', err),
+            );
+        }
+
+        return this.databaseService.booking.findUnique({
+            where: { id: bookingId },
+        });
+    }
+
+    // ─────────────────────────────────────────
+    // Get Booking
+    // ─────────────────────────────────────────
+
+    async getBooking(bookingId: string, userId?: string) {
         const booking = await this.databaseService.booking.findUnique({
             where: { id: bookingId },
             include: {
@@ -692,111 +746,146 @@ export class BookingService {
                 },
                 items: {
                     include: {
-                        guests: {
-                            include: {
-                                permit: true,
-                            },
-                        },
+                        guests: { include: { permit: true } },
                         permits: true,
+                        rooms: true,
                     },
                 },
                 payment: true,
             },
         });
 
-        if (!booking) {
-            throw new NotFoundException('Booking not found');
-        }
+        if (!booking) throw new NotFoundException('Booking not found');
 
-        // Verify access
         if (userId && booking.userId !== userId) {
-            throw new ForbiddenException('Unauthorized access');
+            throw new ForbiddenException('You do not have access to this booking');
         }
-
-        // Provider access check would go here if needed
 
         return booking;
     }
 
-    async getMyBookings(userId: string, status?: BookingStatus) {
-        return this.databaseService.booking.findMany({
-            where: {
-                userId,
-                ...(status && { status }),
-            },
-            include: {
-                items: {
-                    include: {
-                        guests: true,
-                    },
+    // ─────────────────────────────────────────
+    // Get My Bookings (User)
+    // ─────────────────────────────────────────
+
+    async getMyBookings(
+        userId: string,
+        options: { status?: BookingStatus; page?: number; limit?: number } = {},
+    ) {
+        const page = options.page ?? 1;
+        const limit = options.limit ?? 10;
+        const skip = (page - 1) * limit;
+
+        const [bookings, total] = await Promise.all([
+            this.databaseService.booking.findMany({
+                where: {
+                    userId,
+                    ...(options.status && { status: options.status }),
                 },
-                payment: true,
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+                include: {
+                    items: {
+                        include: { guests: true, rooms: true },
+                    },
+                    payment: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+            }),
+            this.databaseService.booking.count({
+                where: {
+                    userId,
+                    ...(options.status && { status: options.status }),
+                },
+            }),
+        ]);
+
+        return {
+            data: bookings,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        };
     }
 
-    async getProviderBookings(userId: string, status?: BookingStatus) {
-        // Get user's provider
-        const user = await this.databaseService.user.findUnique({
-            where: { id: userId },
-            include: { provider: true },
-        });
+    // ─────────────────────────────────────────
+    // Get Provider Bookings
+    // ─────────────────────────────────────────
 
-        if (!user?.provider) {
-            throw new BadRequestException('User is not a provider');
-        }
+    async getProviderBookings(
+        userId: string,
+        options: { status?: BookingStatus; page?: number; limit?: number } = {},
+    ) {
+        const provider = await this.resolveProvider(userId);
+        const page = options.page ?? 1;
+        const limit = options.limit ?? 10;
+        const skip = (page - 1) * limit;
 
-        const providerId = user.provider.id;
+        // Fetch all provider product IDs in parallel
+        const [homestayRooms, vehicles, guides] = await Promise.all([
+            // For homestay, BookingItem.productId is roomId — query rooms not homestays
+            this.databaseService.homestayRoom.findMany({
+                where: { homestay: { providerId: provider.id } },
+                select: { id: true },
+            }),
+            this.databaseService.vehicle.findMany({
+                where: { providerId: provider.id },
+                select: { id: true },
+            }),
+            this.databaseService.localGuide.findMany({
+                where: { providerId: provider.id },
+                select: { id: true },
+            }),
+        ]);
 
-        // Get all products owned by provider
-        const homestays = await this.databaseService.homestay.findMany({
-            where: { providerId },
-            select: { id: true },
-        });
-        const vehicles = await this.databaseService.vehicle.findMany({
-            where: { providerId },
-            select: { id: true },
-        });
-        const guides = await this.databaseService.localGuide.findMany({
-            where: { providerId },
-            select: { id: true },
-        });
-
-        const homestayIds = homestays.map(h => h.id);
+        const roomIds = homestayRooms.map(r => r.id);
         const vehicleIds = vehicles.map(v => v.id);
         const guideIds = guides.map(g => g.id);
 
-        return this.databaseService.booking.findMany({
-            where: {
-                ...(status && { status }),
-                items: {
-                    some: {
-                        OR: [
-                            { productType: ProviderType.HOMESTAY_HOST, productId: { in: homestayIds } },
-                            { productType: ProviderType.VEHICLE_PARTNER, productId: { in: vehicleIds } },
-                            { productType: ProviderType.LOCAL_GUIDE, productId: { in: guideIds } },
-                        ],
-                    },
+        const where = {
+            ...(options.status && { status: options.status }),
+            items: {
+                some: {
+                    OR: [
+                        ...(roomIds.length
+                            ? [{ productType: ProviderType.HOMESTAY_HOST, productId: { in: roomIds } }]
+                            : []),
+                        ...(vehicleIds.length
+                            ? [{ productType: ProviderType.VEHICLE_PARTNER, productId: { in: vehicleIds } }]
+                            : []),
+                        ...(guideIds.length
+                            ? [{ productType: ProviderType.LOCAL_GUIDE, productId: { in: guideIds } }]
+                            : []),
+                    ],
                 },
             },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
+        };
+
+        const [bookings, total] = await Promise.all([
+            this.databaseService.booking.findMany({
+                where,
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            email: true,
+                            firstName: true,
+                            lastName: true,
+                        },
                     },
-                },
-                items: {
-                    include: {
-                        guests: true,
+                    items: {
+                        include: { guests: true, rooms: true },
                     },
+                    payment: true,
                 },
-                payment: true,
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+            }),
+            this.databaseService.booking.count({ where }),
+        ]);
+
+        return {
+            data: bookings,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        };
     }
 }

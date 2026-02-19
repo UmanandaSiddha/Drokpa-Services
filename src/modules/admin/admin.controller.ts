@@ -1,9 +1,18 @@
-import { Controller, Get, Put, Param, Query, UseGuards } from '@nestjs/common';
+import {
+    Controller,
+    Get,
+    Patch,
+    Param,
+    Query,
+    UseGuards,
+    ParseEnumPipe,
+} from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole, ProviderStatus, BookingStatus } from 'generated/prisma/enums';
+import { QueryString } from 'src/utils/apiFeatures';
 
 @Controller('admin')
 @UseGuards(AuthGuard, RoleGuard)
@@ -11,44 +20,73 @@ import { UserRole, ProviderStatus, BookingStatus } from 'generated/prisma/enums'
 export class AdminController {
     constructor(private readonly adminService: AdminService) { }
 
+    // ─────────────────────────────────────────
+    // Dashboard
+    // ─────────────────────────────────────────
+
     @Get('dashboard')
     getDashboardStats() {
         return this.adminService.getDashboardStats();
     }
 
+    // ─────────────────────────────────────────
+    // Bookings
+    // ─────────────────────────────────────────
+
     @Get('bookings')
-    getAllBookings(@Query('status') status?: BookingStatus) {
-        return this.adminService.getAllBookings({ status });
+    getAllBookings(
+        @Query() query: QueryString,
+        @Query('status', new ParseEnumPipe(BookingStatus, { optional: true }))
+        status?: BookingStatus,
+    ) {
+        return this.adminService.getAllBookings(query, status);
     }
+
+    // ─────────────────────────────────────────
+    // Providers
+    // ─────────────────────────────────────────
 
     @Get('providers')
     getAllProviders(
-        @Query('status') status?: ProviderStatus,
+        @Query() query: QueryString,
+        @Query('status', new ParseEnumPipe(ProviderStatus, { optional: true }))
+        status?: ProviderStatus,
         @Query('verified') verified?: string,
     ) {
-        return this.adminService.getAllProviders({
+        return this.adminService.getAllProviders(query, {
             status,
-            verified: verified === 'true' ? true : verified === 'false' ? false : undefined,
+            verified:
+                verified === 'true' ? true
+                    : verified === 'false' ? false
+                        : undefined,
         });
     }
 
-    @Put('provider/:id/verify')
+    @Patch('provider/:id/verify')
     verifyProvider(@Param('id') id: string) {
         return this.adminService.verifyProvider(id);
     }
 
-    @Put('provider/:id/suspend')
+    @Patch('provider/:id/suspend')
     suspendProvider(@Param('id') id: string) {
         return this.adminService.suspendProvider(id);
     }
+
+    // ─────────────────────────────────────────
+    // Payments
+    // ─────────────────────────────────────────
 
     @Get('payments')
     getPaymentAnalytics() {
         return this.adminService.getPaymentAnalytics();
     }
 
+    // ─────────────────────────────────────────
+    // Users
+    // ─────────────────────────────────────────
+
     @Get('users')
-    getAllUsers() {
-        return this.adminService.getAllUsers();
+    getAllUsers(@Query() query: QueryString) {
+        return this.adminService.getAllUsers(query);
     }
 }

@@ -22,6 +22,7 @@ import { AuthProvider, Prisma, User, UserRole, UserRoleMap } from 'generated/pri
 import { ResetPasswordDto } from './dto/reset.password.dto';
 import { SAFE_USER_SELECT, SafeUser } from 'src/utils/auth.helper';
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { RedisService } from 'src/services/redis/redis.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +33,7 @@ export class AuthService {
 		private readonly jwtService: JwtService,
 		private readonly emailService: EmailService,
 		private readonly onboardingService: OnboardingService,
+		private readonly redisService: RedisService,
 	) { }
 
 	// --- Helper Functions ---
@@ -41,6 +43,19 @@ export class AuthService {
 		try {
 			const secret = this.config.get<string>('ACCESS_TOKEN_SECRET');
 			const payload: { id: string } = await this.jwtService.verifyAsync(token, { secret });
+
+			const cacheKey = `auth:user:${payload.id}`;
+
+			const cached = await this.redisService.get(cacheKey);
+			if (cached) {
+				const parsed: SafeUser = JSON.parse(cached);
+
+				if (!Array.isArray(parsed.roles)) {
+					throw new ForbiddenException('User roles not found');
+				}
+
+				return parsed;
+			}
 
 			const user = await this.databaseService.user.findUnique({
 				where: { id: payload.id },
@@ -54,10 +69,14 @@ export class AuthService {
 			});
 			if (!user || user.isDeleted) throw new UnauthorizedException('Invalid user.');
 
-			return {
+			const safeUser: SafeUser = {
 				...user,
 				providerId: user.provider?.id,
 			};
+
+			await this.redisService.set(cacheKey, JSON.stringify(safeUser), 60 * 5); // 5 min
+
+			return safeUser;
 		} catch (err: any) {
 			if (err instanceof UnauthorizedException) throw err; // re-throw your own exceptions
 			if (err.name === 'TokenExpiredError') throw new UnauthorizedException('Token expired.');
@@ -421,6 +440,8 @@ export class AuthService {
 			}
 		}
 
+		await this.invalidateUserCache(userId);
+
 		this.clearToken(res, "ACCESS_TOKEN");
 		this.clearToken(res, "REFRESH_TOKEN");
 
@@ -505,5 +526,9 @@ export class AuthService {
 		});
 
 		return { message: 'Password reset successfully', success: true };
+	}
+
+	async invalidateUserCache(userId: string) {
+		await this.redisService.del(`auth:user:${userId}`);
 	}
 }

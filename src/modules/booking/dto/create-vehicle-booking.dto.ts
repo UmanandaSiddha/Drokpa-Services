@@ -1,8 +1,7 @@
-import { IsString, IsDateString, IsInt, Min, IsNotEmpty } from 'class-validator';
+import { IsDateString, IsInt, IsUUID, Min } from 'class-validator';
 
 export class CreateVehicleBookingDto {
-    @IsString()
-    @IsNotEmpty()
+    @IsUUID()
     vehicleId: string;
 
     @IsDateString()

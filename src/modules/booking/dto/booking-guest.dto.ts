@@ -1,5 +1,5 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { Gender } from 'generated/prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString, Min, IsEmail } from 'class-validator';
+import { Gender } from 'generated/prisma/enums';
 
 export class BookingGuestDto {
     @IsString()
@@ -8,8 +8,12 @@ export class BookingGuestDto {
     @IsString()
     contactNumber: string;
 
+    @IsOptional()
+    @IsEmail()
+    email?: string;
+
     @IsInt()
-    @Min(0)
+    @Min(1)
     age: number;
 
     @IsEnum(Gender)

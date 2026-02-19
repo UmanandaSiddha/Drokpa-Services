@@ -1,7 +1,15 @@
-import { BadRequestException, Controller, Headers, HttpCode, Post, Req, RawBodyRequest } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import {
+    Controller,
+    Headers,
+    HttpCode,
+    Post,
+    Req,
+    RawBodyRequest,
+    UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import { WebhookService } from "./webhook.service";
+import { WebhookService } from './webhook.service';
 
 @Controller('webhook')
 export class WebhookController {
@@ -16,24 +24,34 @@ export class WebhookController {
         @Req() req: RawBodyRequest<Request>,
         @Headers('x-razorpay-signature') signature: string,
     ) {
+        // Guard missing signature header before attempting comparison
+        if (!signature) {
+            throw new UnauthorizedException('Missing webhook signature');
+        }
+
         const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
-        if (!secret) throw new BadRequestException('Webhook secret missing');
+        if (!secret) {
+            throw new UnauthorizedException('Webhook secret not configured');
+        }
 
         const rawBody = req.rawBody as Buffer;
 
-        // ✅ Verify Razorpay signature
         const expectedSignature = crypto
             .createHmac('sha256', secret)
             .update(rawBody)
             .digest('hex');
 
-        if (expectedSignature !== signature) {
-            throw new BadRequestException('Invalid Razorpay signature');
+        // Use timing-safe comparison to prevent timing attacks
+        const signaturesMatch = crypto.timingSafeEqual(
+            Buffer.from(expectedSignature, 'hex'),
+            Buffer.from(signature, 'hex'),
+        );
+
+        if (!signaturesMatch) {
+            throw new UnauthorizedException('Invalid webhook signature');
         }
 
-        // ✅ Parse and delegate to service
         const event = JSON.parse(rawBody.toString());
         return this.webhookService.processRazorpayWebhook(event);
     }
-
 }

@@ -9,12 +9,14 @@ import { SocketGuard } from './guards/socket.guard';
 import { EmailModule } from 'src/services/email/email.module';
 import { OnboardingModule } from 'src/modules/onboarding/onboarding.module';
 import { RoleGuard } from './guards/role.guard';
+import { RedisModule } from 'src/services/redis/redis.module';
 
 @Module({
 	imports: [
 		ConfigModule,
 		DatabaseModule,
 		EmailModule,
+		RedisModule,
 		forwardRef(() => OnboardingModule),
 		JwtModule.registerAsync({
 			inject: [ConfigService],

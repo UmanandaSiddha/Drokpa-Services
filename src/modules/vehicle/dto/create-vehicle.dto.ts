@@ -1,4 +1,7 @@
-import { IsString, IsArray, IsInt, Min, IsBoolean, IsOptional, IsNotEmpty } from 'class-validator';
+import {
+    IsArray, IsBoolean, IsEnum, IsInt,
+    IsNotEmpty, IsOptional, IsString, IsUUID, Min,
+} from 'class-validator';
 import { VehicleType, VehicleBookingMode } from 'generated/prisma/enums';
 
 export class CreateVehicleDto {
@@ -6,33 +9,40 @@ export class CreateVehicleDto {
     @IsNotEmpty()
     name: string;
 
-    @IsString()
+    @IsEnum(VehicleType)
     type: VehicleType;
 
-    @IsString()
     @IsOptional()
+    @IsString()
     brand?: string;
 
-    @IsString()
     @IsOptional()
+    @IsString()
     model?: string;
 
     @IsString()
     @IsNotEmpty()
     registrationNo: string;
 
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    imageUrls: string[];
+    imageUrls?: string[];
 
     @IsInt()
     @Min(1)
     basePricePerDay: number;
 
-    @IsArray()
-    bookingMode: VehicleBookingMode[];
-
-    @IsString()
     @IsOptional()
+    @IsArray()
+    @IsEnum(VehicleBookingMode, { each: true })
+    bookingMode?: VehicleBookingMode[];
+
+    @IsOptional()
+    @IsUUID()
     addressId?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    isActive?: boolean;
 }

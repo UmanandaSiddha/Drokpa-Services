@@ -1,12 +1,18 @@
-import { IsString, IsInt, Min, Max, IsOptional, IsEnum, IsNotEmpty } from 'class-validator';
-import { ReviewTarget } from 'generated/prisma/enums';
+import {
+    IsEnum, IsInt, IsOptional,
+    IsString, IsUUID, Max, Min,
+} from 'class-validator';
+
+export enum ReviewTargetType {
+    TOUR = 'TOUR',
+    HOMESTAY = 'HOMESTAY',
+}
 
 export class CreateReviewDto {
-    @IsEnum(ReviewTarget)
-    targetType: ReviewTarget;
+    @IsEnum(ReviewTargetType)
+    targetType: ReviewTargetType;
 
-    @IsString()
-    @IsNotEmpty()
+    @IsUUID()
     targetId: string;
 
     @IsInt()
@@ -14,11 +20,11 @@ export class CreateReviewDto {
     @Max(5)
     rating: number;
 
-    @IsString()
     @IsOptional()
+    @IsString()
     comment?: string;
 
-    @IsString()
     @IsOptional()
+    @IsUUID()
     bookingId?: string;
 }

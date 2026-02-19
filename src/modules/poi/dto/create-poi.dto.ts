@@ -1,29 +1,39 @@
-import { IsString, IsArray, IsNumber, IsOptional, IsNotEmpty } from 'class-validator';
+import {
+    IsArray, IsNotEmpty, IsNumber,
+    IsOptional, IsString, IsUUID,
+    Max, Min,
+} from 'class-validator';
 
 export class CreatePOIDto {
     @IsString()
     @IsNotEmpty()
     name: string;
 
-    @IsString()
     @IsOptional()
+    @IsString()
     description?: string;
 
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    specialty: string[];
+    specialty?: string[];
 
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    imageUrls: string[];
+    imageUrls?: string[];
 
     @IsNumber()
+    @Min(-90)
+    @Max(90)
     latitude: number;
 
     @IsNumber()
+    @Min(-180)
+    @Max(180)
     longitude: number;
 
-    @IsString()
     @IsOptional()
+    @IsUUID()
     addressId?: string;
 }

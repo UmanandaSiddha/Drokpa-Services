@@ -1,7 +1,14 @@
-import { Controller, Post, Get, Put, Body, Param, UseGuards, BadRequestException } from '@nestjs/common';
+// permit.controller.ts
+import {
+    Controller, Post, Get, Patch,
+    Body, Param, UseGuards,
+} from '@nestjs/common';
 import { PermitService } from './permit.service';
 import { SubmitPermitDto } from './dto/submit-permit.dto';
-import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
+import { ApprovePermitDto } from './dto/approve-permit.dto';
+import { RejectPermitDto } from './dto/reject-permit.dto';
+import { UploadPermitDocumentDto } from './dto/upload-document.dto';
+import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole } from 'generated/prisma/enums';
@@ -15,31 +22,49 @@ export class PermitController {
     submitPermit(
         @Param('id') id: string,
         @Body() dto: SubmitPermitDto,
+        @getUser('id') userId: string,
     ) {
-        return this.permitService.submitPermit(id, dto);
+        return this.permitService.submitPermit(id, userId, dto);
     }
 
-    @Put(':id/approve')
+    // Static routes above :id
+
+    @Get('booking/:bookingId')
+    getPermitsByBooking(
+        @Param('bookingId') bookingId: string,
+        @getUser('id') userId: string,
+    ) {
+        return this.permitService.getPermitsByBooking(bookingId, userId);
+    }
+
+    @Get(':id')
+    getPermit(
+        @Param('id') id: string,
+        @getUser('id') userId: string,
+    ) {
+        return this.permitService.getPermit(id, userId);
+    }
+
+    // Admin actions
+
+    @Patch(':id/approve')
     @UseGuards(RoleGuard)
     @Roles(UserRole.ADMIN)
     approvePermit(
         @Param('id') id: string,
-        @Body('permitDocumentId') permitDocumentId?: string,
+        @Body() dto: ApprovePermitDto,
     ) {
-        return this.permitService.approvePermit(id, permitDocumentId);
+        return this.permitService.approvePermit(id, dto.permitDocumentId);
     }
 
-    @Put(':id/reject')
+    @Patch(':id/reject')
     @UseGuards(RoleGuard)
     @Roles(UserRole.ADMIN)
     rejectPermit(
         @Param('id') id: string,
-        @Body() body: { reason: string },
+        @Body() dto: RejectPermitDto,
     ) {
-        if (!body.reason?.trim()) {
-            throw new BadRequestException('Rejection reason is required');
-        }
-        return this.permitService.rejectPermit(id, body.reason);
+        return this.permitService.rejectPermit(id, dto.reason);
     }
 
     @Post(':id/document')
@@ -47,21 +72,8 @@ export class PermitController {
     @Roles(UserRole.ADMIN)
     uploadPermitDocument(
         @Param('id') id: string,
-        @Body() body: { documentId: string },
+        @Body() dto: UploadPermitDocumentDto,
     ) {
-        if (!body.documentId?.trim()) {
-            throw new BadRequestException('Document ID is required');
-        }
-        return this.permitService.uploadPermitDocument(id, body.documentId);
-    }
-
-    @Get('booking/:bookingId')
-    getPermitsByBooking(@Param('bookingId') bookingId: string) {
-        return this.permitService.getPermitsByBooking(bookingId);
-    }
-
-    @Get(':id')
-    getPermit(@Param('id') id: string) {
-        return this.permitService.getPermit(id);
+        return this.permitService.uploadPermitDocument(id, dto.documentId);
     }
 }

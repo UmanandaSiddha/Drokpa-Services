@@ -13,7 +13,7 @@ export class UserService {
 
     constructor(
         private readonly databaseService: DatabaseService,
-        private readonly authService: AuthService
+        private readonly authService: AuthService,
     ) { }
 
     // ─────────────────────────────────────────────
@@ -81,6 +81,8 @@ export class UserService {
             data: { isDeleted: true, deletedAt: new Date() }
         });
 
+        await this.authService.invalidateUserCache(userId);
+
         await this.databaseService.session.deleteMany({ where: { userId } });
 
         // TODO: Clean up S3 assets (avatarUrl, documents)
@@ -100,6 +102,8 @@ export class UserService {
             data: { isDisabled: !user.isDisabled },
             select: SAFE_USER_SELECT,
         });
+
+        await this.authService.invalidateUserCache(userId);
 
         // If disabling, invalidate all sessions immediately
         if (updatedUser.isDisabled) {
@@ -183,6 +187,8 @@ export class UserService {
             select: SAFE_USER_SELECT,
         });
 
+        await this.authService.invalidateUserCache(userId);
+
         // Invalidate all sessions — user must re-login after verifying new email
         await this.databaseService.session.deleteMany({ where: { userId } });
 
@@ -216,6 +222,8 @@ export class UserService {
             },
             select: SAFE_USER_SELECT,
         });
+
+        await this.authService.invalidateUserCache(userId);
 
         return { message: 'Profile updated successfully', data: updatedUser };
     }
@@ -347,6 +355,8 @@ export class UserService {
             where: { id: userId },
             data: { isDeleted: true, deletedAt: new Date() }
         });
+
+        await this.authService.invalidateUserCache(userId);
 
         await this.databaseService.session.deleteMany({ where: { userId } });
 

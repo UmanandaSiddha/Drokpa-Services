@@ -1,15 +1,12 @@
 import {
-    IsArray,
-    IsDateString,
-    IsString,
-    ValidateNested,
-    ArrayMinSize,
+    IsArray, IsDateString, IsString,
+    IsUUID, ValidateNested, ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BookingGuestDto } from './booking-guest.dto';
 
 export class CreateTourBookingDto {
-    @IsString()
+    @IsUUID()
     tourId: string;
 
     @IsDateString()

@@ -1,8 +1,8 @@
-import { IsString, IsDateString, IsInt, Min, IsNotEmpty } from 'class-validator';
+// create-guide-booking.dto.ts
+import { IsDateString, IsInt, IsUUID, Min } from 'class-validator';
 
 export class CreateGuideBookingDto {
-    @IsString()
-    @IsNotEmpty()
+    @IsUUID()
     guideId: string;
 
     @IsDateString()

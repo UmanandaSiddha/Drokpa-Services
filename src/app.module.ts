@@ -28,6 +28,10 @@ import { AdminModule } from './modules/admin/admin.module';
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { ToursModule } from './modules/tours/tours.module';
 import { HomestayModule } from './modules/homestay/homestay.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { SchedulerModule } from './modules/scheduler/scheduler.module';
+import { PayoutModule } from './modules/payout/payout.module';
+import { RoomAvailabilityModule } from './modules/room-availibility/room-availibility.module';
 
 @Module({
 	imports: [
@@ -35,6 +39,8 @@ import { HomestayModule } from './modules/homestay/homestay.module';
 			isGlobal: true,
 		}),
 		EventEmitterModule.forRoot(),
+		ScheduleModule.forRoot(),
+		SchedulerModule,
 		LoggerModule,
 		QueueModule,
 		HealthModule,
@@ -45,6 +51,8 @@ import { HomestayModule } from './modules/homestay/homestay.module';
 		DatabaseModule,
 		EmailModule,
 		PaymentModule,
+		PayoutModule,
+		RoomAvailabilityModule,
 		BookingModule,
 		BucketListModule,
 		VehicleModule,

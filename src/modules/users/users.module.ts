@@ -3,6 +3,7 @@ import { DatabaseModule } from 'src/services/database/database.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { UserController } from './users.controller';
 import { UserService } from './users.service';
+import { RedisModule } from 'src/services/redis/redis.module';
 
 @Module({
     imports: [DatabaseModule, AuthModule],

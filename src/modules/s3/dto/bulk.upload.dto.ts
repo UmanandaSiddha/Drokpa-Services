@@ -1,20 +1,20 @@
-import { IsArray, IsNotEmpty, IsString, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsIn, IsNotEmpty, IsString, ValidateNested } from "class-validator";
 import { FileInfo, UploadType } from "./s3.interface";
 import { Type } from "class-transformer";
+import { ALLOWED_MIME_TYPES } from "src/utils/s3.helper";
 
 export class FileInfoDto implements FileInfo {
     @IsString()
     @IsNotEmpty()
     originalFileName: string;
 
-    @IsString()
-    @IsNotEmpty()
+    @IsIn(ALLOWED_MIME_TYPES)
     fileType: string;
 }
 
 export class GetPresignedUrlsDto {
     @IsNotEmpty()
-    @IsString()
+    @IsEnum(UploadType)
     uploadType: UploadType;
 
     @IsString()
@@ -22,6 +22,7 @@ export class GetPresignedUrlsDto {
     contextId: string;
 
     @IsArray()
+    @ArrayMinSize(1)
     @ValidateNested({ each: true })
     @Type(() => FileInfoDto)
     files: FileInfoDto[];

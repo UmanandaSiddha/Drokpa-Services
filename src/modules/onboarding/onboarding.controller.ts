@@ -1,4 +1,7 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+    Controller, Post, Get, Patch, Delete,
+    Body, Param, Query, UseGuards,
+} from '@nestjs/common';
 import { OnboardingService } from './onboarding.service';
 import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
@@ -12,22 +15,15 @@ import { QueryString } from 'src/utils/apiFeatures';
 export class OnboardingController {
     constructor(private readonly onboardingService: OnboardingService) { }
 
-    // ─────────────────────────────────────────────
-    // PUBLIC
-    // ─────────────────────────────────────────────
+    // ── Public ────────────────────────────────
 
-    // Get onboarding details by token (for pre-filling the form)
-    // NOTE: Must be above any :token param routes to avoid conflict
     @Get('token/:token')
     getOnboardingByToken(@Param('token') token: string) {
         return this.onboardingService.getOnboardingByToken(token);
     }
 
-    // ─────────────────────────────────────────────
-    // USER (authenticated)
-    // ─────────────────────────────────────────────
+    // ── User (authenticated) ──────────────────
 
-    // Complete onboarding using token
     @Post('complete')
     @UseGuards(AuthGuard)
     completeOnboarding(
@@ -37,11 +33,8 @@ export class OnboardingController {
         return this.onboardingService.completeOnboarding(dto, userId);
     }
 
-    // ─────────────────────────────────────────────
-    // ADMIN
-    // ─────────────────────────────────────────────
+    // ── Admin ─────────────────────────────────
 
-    // Create onboarding invite
     @Post('admin/invite')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -49,7 +42,6 @@ export class OnboardingController {
         return this.onboardingService.createOnboardingInvite(dto);
     }
 
-    // Get all onboardings (paginated, all statuses)
     @Get('admin/all')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -57,7 +49,6 @@ export class OnboardingController {
         return this.onboardingService.getAllOnboardings(filters);
     }
 
-    // Get pending onboardings only
     @Get('admin/pending')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -65,7 +56,6 @@ export class OnboardingController {
         return this.onboardingService.getPendingOnboardings();
     }
 
-    // Get onboarding by provider ID
     @Get('admin/provider/:providerId')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -73,7 +63,6 @@ export class OnboardingController {
         return this.onboardingService.getOnboardingByProvider(providerId);
     }
 
-    // Revoke onboarding invite
     @Delete('admin/:id/revoke')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -81,8 +70,7 @@ export class OnboardingController {
         return this.onboardingService.revokeOnboardingInvite(id);
     }
 
-    // Resend / extend onboarding invite
-    @Put('admin/:id/resend')
+    @Patch('admin/:id/resend')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
     resendOnboardingInvite(@Param('id') id: string) {

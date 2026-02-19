@@ -1,10 +1,15 @@
-import { BadRequestException, Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+    BadRequestException, Controller, Post, Get,
+    Patch, Delete, Body, Param, Query,
+    UseGuards, ParseIntPipe,
+} from '@nestjs/common';
 import { POIService } from './poi.service';
 import { CreatePOIDto } from './dto/create-poi.dto';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole } from 'generated/prisma/enums';
+import { QueryString } from 'src/utils/apiFeatures';
 
 @Controller('poi')
 export class POIController {
@@ -17,29 +22,27 @@ export class POIController {
         return this.poiService.createPOI(dto);
     }
 
+    // Static GET routes above :id
     @Get()
-    getPOIs(@Query('name') name?: string) {
-        return this.poiService.getPOIs({ name });
+    getPOIs(@Query() query: QueryString) {
+        return this.poiService.getPOIs(query);
     }
 
     @Get('nearby')
     getNearbyPOIs(
-        @Query('latitude') latitude: string,
-        @Query('longitude') longitude: string,
+        @Query('latitude') latitude?: string,
+        @Query('longitude') longitude?: string,
         @Query('radius') radius?: string,
     ) {
-        const parsedLatitude = parseFloat(latitude);
-        const parsedLongitude = parseFloat(longitude);
-
-        if (Number.isNaN(parsedLatitude) || Number.isNaN(parsedLongitude)) {
-            throw new BadRequestException('Latitude and longitude must be valid numbers');
+        if (!latitude || !longitude) {
+            throw new BadRequestException('latitude and longitude are required');
         }
-
-        return this.poiService.getNearbyPOIs(
-            parsedLatitude,
-            parsedLongitude,
-            radius ? parseFloat(radius) : 10,
-        );
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        if (isNaN(lat) || isNaN(lng)) {
+            throw new BadRequestException('latitude and longitude must be valid numbers');
+        }
+        return this.poiService.getNearbyPOIs(lat, lng, radius ? parseFloat(radius) : 10);
     }
 
     @Get(':id')
@@ -47,7 +50,7 @@ export class POIController {
         return this.poiService.getPOI(id);
     }
 
-    @Put(':id')
+    @Patch(':id')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
     updatePOI(
@@ -70,14 +73,8 @@ export class POIController {
     linkToItinerary(
         @Param('id') id: string,
         @Param('itineraryId') itineraryId: string,
-        @Query('order') order: string,
+        @Body('order', ParseIntPipe) order: number,
     ) {
-        const parsedOrder = Number(order);
-
-        if (!Number.isInteger(parsedOrder) || parsedOrder < 0) {
-            throw new BadRequestException('Order must be a non-negative integer');
-        }
-
-        return this.poiService.linkToItinerary(id, itineraryId, parsedOrder);
+        return this.poiService.linkToItinerary(id, itineraryId, order);
     }
 }

@@ -1,11 +1,11 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsOptional, IsUUID } from 'class-validator';
 
 export class SubmitPermitDto {
-    @IsString()
     @IsOptional()
+    @IsUUID()
     passportPhotoId?: string;
 
-    @IsString()
     @IsOptional()
+    @IsUUID()
     identityProofId?: string;
 }

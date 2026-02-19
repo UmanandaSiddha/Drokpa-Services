@@ -1,246 +1,263 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+    Injectable,
+    NotFoundException,
+    BadRequestException,
+    ForbiddenException,
+} from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateLocalGuideDto } from './dto/create-local-guide.dto';
+import { BookingStatus, ProviderType } from 'generated/prisma/enums';
+import { Prisma } from 'generated/prisma/client';
+import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
+
+const GUIDE_INCLUDE = {
+    provider: { select: { id: true, name: true } },
+    address: true,
+} satisfies Prisma.LocalGuideInclude;
 
 @Injectable()
 export class LocalGuideService {
-    constructor(
-        private readonly databaseService: DatabaseService,
-    ) { }
+    constructor(private readonly databaseService: DatabaseService) { }
 
-    async createGuide(providerId: string, dto: CreateLocalGuideDto) {
-        // Verify provider exists
+    // ─────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────
+
+    private async resolveProvider(userId: string) {
         const provider = await this.databaseService.provider.findUnique({
-            where: { id: providerId },
+            where: { userId },
+            select: { id: true },
         });
+        if (!provider) throw new NotFoundException('Provider profile not found');
+        return provider;
+    }
 
-        if (!provider) {
-            throw new NotFoundException('Provider not found');
-        }
+    private async validateAddress(addressId: string): Promise<void> {
+        const address = await this.databaseService.address.findUnique({
+            where: { id: addressId },
+            select: { id: true },
+        });
+        if (!address) throw new BadRequestException(`Address ${addressId} not found`);
+    }
 
-        // Verify addressId if provided
+    // ─────────────────────────────────────────
+    // Create
+    // ─────────────────────────────────────────
+
+    async createGuide(userId: string, dto: CreateLocalGuideDto) {
+        const provider = await this.resolveProvider(userId);
+
         if (dto.addressId) {
-            const address = await this.databaseService.address.findUnique({
-                where: { id: dto.addressId },
-            });
-            if (!address) {
-                throw new BadRequestException('Address not found');
-            }
+            await this.validateAddress(dto.addressId);
         }
 
         return this.databaseService.localGuide.create({
             data: {
-                ...dto,
-                providerId,
+                bio: dto.bio,
+                languages: dto.languages ?? [],
+                specialties: dto.specialties ?? [],
+                basePricePerDay: dto.basePricePerDay,
+                imageUrls: dto.imageUrls ?? [],
+                isActive: dto.isActive ?? true,
+                providerId: provider.id,
+                ...(dto.addressId && { addressId: dto.addressId }),
             },
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                address: true,
-            },
+            include: GUIDE_INCLUDE,
         });
     }
 
-    async getGuides(filters?: { isActive?: boolean; providerId?: string; specialties?: string[] }) {
-        return this.databaseService.localGuide.findMany({
-            where: {
-                ...(filters?.isActive !== undefined && { isActive: filters.isActive }),
-                ...(filters?.providerId && { providerId: filters.providerId }),
-                ...(filters?.specialties && {
-                    specialties: {
-                        hasSome: filters.specialties,
-                    },
-                }),
+    // ─────────────────────────────────────────
+    // List (paginated, filterable, sortable)
+    // ─────────────────────────────────────────
+
+    async getGuides(queryStr: QueryString) {
+        const features = new PrismaApiFeatures(
+            this.databaseService.localGuide,
+            queryStr,
+        )
+            .where({ isActive: true })
+            .search(['bio'])
+            .filter()
+            .sort({ rating: 'desc' } as Prisma.LocalGuideOrderByWithRelationInput)
+            .include(GUIDE_INCLUDE)
+            .pagination(20);
+
+        const { results, totalCount } = await features.execute();
+        const page = Number(queryStr.page) || 1;
+        const limit = Number(queryStr.limit) || 20;
+
+        return {
+            data: results,
+            meta: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit),
             },
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                address: true,
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+        };
     }
+
+    // ─────────────────────────────────────────
+    // Get by ID
+    // ─────────────────────────────────────────
 
     async getGuide(id: string) {
         const guide = await this.databaseService.localGuide.findUnique({
             where: { id },
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                address: true,
-            },
+            include: GUIDE_INCLUDE,
         });
-
-        if (!guide) {
-            throw new NotFoundException('Guide not found');
-        }
-
+        if (!guide) throw new NotFoundException('Guide not found');
         return guide;
     }
 
-    async updateGuide(id: string, providerId: string, dto: Partial<CreateLocalGuideDto>) {
-        const guide = await this.databaseService.localGuide.findUnique({
-            where: { id },
-        });
+    // ─────────────────────────────────────────
+    // Get My Guides (provider)
+    // ─────────────────────────────────────────
 
-        if (!guide) {
-            throw new NotFoundException('Guide not found');
-        }
-
-        if (guide.providerId !== providerId) {
-            throw new BadRequestException('Unauthorized to update this guide');
-        }
-
-        // Verify addressId if provided
-        if (dto.addressId) {
-            const address = await this.databaseService.address.findUnique({
-                where: { id: dto.addressId },
-            });
-            if (!address) {
-                throw new BadRequestException('Address not found');
-            }
-        }
-
-        return this.databaseService.localGuide.update({
-            where: { id },
-            data: dto,
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                address: true,
-            },
-        });
-    }
-
-    async deleteGuide(id: string, providerId: string) {
-        const guide = await this.databaseService.localGuide.findUnique({
-            where: { id },
-        });
-
-        if (!guide) {
-            throw new NotFoundException('Guide not found');
-        }
-
-        if (guide.providerId !== providerId) {
-            throw new BadRequestException('Unauthorized to delete this guide');
-        }
-
-        await this.databaseService.localGuide.delete({
-            where: { id },
-        });
-
-        return { message: 'Guide deleted successfully' };
-    }
-
-    async getMyGuides(providerId: string) {
-        // Verify provider exists
-        const provider = await this.databaseService.provider.findUnique({
-            where: { id: providerId },
-        });
-
-        if (!provider) {
-            throw new NotFoundException('Provider not found');
-        }
+    async getMyGuides(userId: string) {
+        const provider = await this.resolveProvider(userId);
 
         return this.databaseService.localGuide.findMany({
-            where: { providerId },
-            include: {
-                address: true,
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-            },
+            where: { providerId: provider.id },
+            include: GUIDE_INCLUDE,
             orderBy: { createdAt: 'desc' },
         });
     }
 
-    async getNearbyGuides(latitude: number, longitude: number, radiusKm: number = 30) {
-        // Validate input parameters
+    // ─────────────────────────────────────────
+    // Update
+    // ─────────────────────────────────────────
+
+    async updateGuide(id: string, userId: string, dto: Partial<CreateLocalGuideDto>) {
+        const provider = await this.resolveProvider(userId);
+
+        const guide = await this.databaseService.localGuide.findUnique({
+            where: { id },
+            select: { id: true, providerId: true },
+        });
+        if (!guide) throw new NotFoundException('Guide not found');
+        if (guide.providerId !== provider.id) {
+            throw new ForbiddenException('You do not have permission to update this guide');
+        }
+
+        if (dto.addressId) {
+            await this.validateAddress(dto.addressId);
+        }
+
+        // Explicit mapping — never spread dto directly into Prisma
+        // to avoid accidentally writing non-updatable fields (rating, totalReviews, etc.)
+        const data: Prisma.LocalGuideUpdateInput = {
+            ...(dto.bio !== undefined && { bio: dto.bio }),
+            ...(dto.languages !== undefined && { languages: dto.languages }),
+            ...(dto.specialties !== undefined && { specialties: dto.specialties }),
+            ...(dto.basePricePerDay !== undefined && { basePricePerDay: dto.basePricePerDay }),
+            ...(dto.imageUrls !== undefined && { imageUrls: dto.imageUrls }),
+            ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+            ...(dto.addressId !== undefined && { addressId: dto.addressId || null }),
+        };
+
+        return this.databaseService.localGuide.update({
+            where: { id },
+            data,
+            include: GUIDE_INCLUDE,
+        });
+    }
+
+    // ─────────────────────────────────────────
+    // Delete (soft preferred — checks active bookings)
+    // ─────────────────────────────────────────
+
+    async deleteGuide(id: string, userId: string) {
+        const provider = await this.resolveProvider(userId);
+
+        const guide = await this.databaseService.localGuide.findUnique({
+            where: { id },
+            select: { id: true, providerId: true },
+        });
+        if (!guide) throw new NotFoundException('Guide not found');
+        if (guide.providerId !== provider.id) {
+            throw new ForbiddenException('You do not have permission to delete this guide');
+        }
+
+        // Block hard delete if active bookings exist
+        const activeBookings = await this.databaseService.bookingItem.count({
+            where: {
+                productId: id,
+                productType: ProviderType.LOCAL_GUIDE,
+                booking: {
+                    status: {
+                        in: [
+                            BookingStatus.REQUESTED,
+                            BookingStatus.AWAITING_PAYMENT,
+                            BookingStatus.CONFIRMED,
+                        ],
+                    },
+                },
+            },
+        });
+
+        if (activeBookings > 0) {
+            throw new BadRequestException(
+                `Cannot delete a guide with ${activeBookings} active booking(s). Deactivate instead.`,
+            );
+        }
+
+        await this.databaseService.localGuide.delete({ where: { id } });
+        return { message: 'Guide deleted successfully' };
+    }
+
+    // ─────────────────────────────────────────
+    // Nearby (PostGIS)
+    // ─────────────────────────────────────────
+
+    async getNearbyGuides(
+        latitude: number,
+        longitude: number,
+        radiusKm: number = 30,
+    ) {
         if (latitude < -90 || latitude > 90) {
             throw new BadRequestException('Latitude must be between -90 and 90');
         }
-
         if (longitude < -180 || longitude > 180) {
             throw new BadRequestException('Longitude must be between -180 and 180');
         }
-
         if (radiusKm <= 0) {
             throw new BadRequestException('Radius must be greater than 0');
         }
 
         const radiusMeters = radiusKm * 1000;
 
-        // Get guide IDs ordered by distance
-        const nearbyGuides = await this.databaseService.$queryRaw<Array<{
-            id: string;
-            distance: number;
-        }>>`
-            SELECT 
-                lg.id,
+        const nearby = await this.databaseService.$queryRaw<Array<{ id: string; distance_meters: number }>>`
+            SELECT lg.id,
                 ST_Distance(
                     a.location,
                     ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
-                ) as distance
+                ) AS distance_meters
             FROM "LocalGuide" lg
-            LEFT JOIN "Address" a ON lg."addressId" = a.id
+            JOIN "Address" a ON lg."addressId" = a.id
             WHERE lg."isActive" = true
-                AND a.location IS NOT NULL
-                AND ST_DWithin(
-                    a.location,
-                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
-                    ${radiusMeters}
-                )
-            ORDER BY ST_Distance(
+            AND a.location IS NOT NULL
+            AND ST_DWithin(
                 a.location,
-                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+                ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+                ${radiusMeters}
             )
+            ORDER BY distance_meters ASC
         `;
 
-        // Return early if no guides found
-        if (!nearbyGuides || nearbyGuides.length === 0) {
-            return [];
-        }
+        if (!nearby.length) return [];
 
-        // Fetch full guide data with relations
-        const guideIds = nearbyGuides.map(g => g.id);
+        const distanceMap = new Map(
+            nearby.map(r => [r.id, Number(r.distance_meters) / 1000]),
+        );
+
         const guides = await this.databaseService.localGuide.findMany({
-            where: { id: { in: guideIds } },
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-                address: true,
-            },
+            where: { id: { in: [...distanceMap.keys()] } },
+            include: GUIDE_INCLUDE,
         });
 
-        // Map distances to guides using efficient Map structure
-        const distanceMap = new Map(nearbyGuides.map(g => [g.id, Number(g.distance) / 1000]));
-
-        return guides.map(guide => ({
-            ...guide,
-            distance: distanceMap.get(guide.id) || null,
-        })).sort((a, b) => (a.distance || 0) - (b.distance || 0));
+        return guides
+            .map(g => ({ ...g, distanceKm: distanceMap.get(g.id) ?? null }))
+            .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     }
 }

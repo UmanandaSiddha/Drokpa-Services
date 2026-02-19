@@ -1,4 +1,7 @@
-import { Controller, Post, Get, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+    Controller, Post, Get, Body,
+    Param, Query, UseGuards, ParseEnumPipe,
+} from '@nestjs/common';
 import { BookingService } from './booking.service';
 import { CreateTourBookingDto } from './dto/create-tour-booking.dto';
 import { CreateHomestayBookingDto } from './dto/create-homestay-booking.dto';
@@ -7,12 +10,16 @@ import { CreateGuideBookingDto } from './dto/create-guide-booking.dto';
 import { ConfirmBookingDto } from './dto/confirm-booking.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
-import { BookingStatus } from 'generated/prisma/enums';
+import { RoleGuard } from 'src/modules/auth/guards/role.guard';
+import { Roles } from 'src/modules/auth/decorator/role.decorator';
+import { BookingStatus, UserRole } from 'generated/prisma/enums';
 
 @Controller('booking')
 @UseGuards(AuthGuard)
 export class BookingController {
     constructor(private readonly bookingService: BookingService) { }
+
+    // ── Booking creation ──────────────────────
 
     @Post('tour/request')
     createTourBooking(
@@ -46,25 +53,65 @@ export class BookingController {
         return this.bookingService.createGuideBooking(userId, dto);
     }
 
+    // ── Provider actions ──────────────────────
+
     @Post(':id/confirm')
+    @UseGuards(RoleGuard)
+    @Roles(UserRole.HOST, UserRole.VENDOR)
     confirmBooking(
         @Param('id') id: string,
         @Body() dto: ConfirmBookingDto,
         @getUser('id') userId: string,
     ) {
-        // Provider ID is fetched from user's provider relationship in the service
         return this.bookingService.confirmBooking(id, userId, dto);
     }
 
     @Post(':id/reject')
+    @UseGuards(RoleGuard)
+    @Roles(UserRole.HOST, UserRole.VENDOR)
     rejectBooking(
         @Param('id') id: string,
         @Body() dto: RejectBookingDto,
         @getUser('id') userId: string,
     ) {
-        // Provider ID is fetched from user's provider relationship in the service
         return this.bookingService.rejectBooking(id, userId, dto);
     }
+
+    // ── Queries — static routes MUST be above :id ──
+
+    @Get('my-bookings')
+    getMyBookings(
+        @getUser('id') userId: string,
+        @Query('status', new ParseEnumPipe(BookingStatus, { optional: true }))
+        status?: BookingStatus,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.bookingService.getMyBookings(userId, {
+            status,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+    }
+
+    @Get('provider/bookings')
+    @UseGuards(RoleGuard)
+    @Roles(UserRole.HOST, UserRole.VENDOR)
+    getProviderBookings(
+        @getUser('id') userId: string,
+        @Query('status', new ParseEnumPipe(BookingStatus, { optional: true }))
+        status?: BookingStatus,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.bookingService.getProviderBookings(userId, {
+            status,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+    }
+
+    // ── Must be last — catch-all param route ──
 
     @Get(':id')
     getBooking(
@@ -72,22 +119,5 @@ export class BookingController {
         @getUser('id') userId: string,
     ) {
         return this.bookingService.getBooking(id, userId);
-    }
-
-    @Get('my-bookings')
-    getMyBookings(
-        @getUser('id') userId: string,
-        @Query('status') status?: BookingStatus,
-    ) {
-        return this.bookingService.getMyBookings(userId, status);
-    }
-
-    @Get('provider/bookings')
-    getProviderBookings(
-        @getUser('id') userId: string,
-        @Query('status') status?: BookingStatus,
-    ) {
-        // Provider ID is fetched from user's provider relationship in the service
-        return this.bookingService.getProviderBookings(userId, status);
     }
 }

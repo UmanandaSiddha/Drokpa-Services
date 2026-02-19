@@ -1,4 +1,7 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+    Controller, Post, Get, Patch, Delete,
+    Body, Param, Query, UseGuards, ParseEnumPipe,
+} from '@nestjs/common';
 import { BucketListService } from './bucketlist.service';
 import { CreateBucketListDto } from './dto/create-bucketlist.dto';
 import { AddBucketListItemDto } from './dto/add-item.dto';
@@ -18,38 +21,11 @@ export class BucketListController {
         return this.bucketListService.createBucketList(userId, dto);
     }
 
-    @Post(':id/item')
-    addItem(
-        @Param('id') id: string,
-        @Body() dto: AddBucketListItemDto,
-        @getUser('id') userId: string,
-    ) {
-        return this.bucketListService.addItem(id, userId, dto);
-    }
-
-    @Put(':id/item/:itemId')
-    updateItem(
-        @Param('id') id: string,
-        @Param('itemId') itemId: string,
-        @Body() dto: Partial<AddBucketListItemDto>,
-        @getUser('id') userId: string,
-    ) {
-        return this.bucketListService.updateItem(id, itemId, userId, dto);
-    }
-
-    @Delete(':id/item/:itemId')
-    removeItem(
-        @Param('id') id: string,
-        @Param('itemId') itemId: string,
-        @getUser('id') userId: string,
-    ) {
-        return this.bucketListService.removeItem(id, itemId, userId);
-    }
-
     @Get()
     getBucketLists(
         @getUser('id') userId: string,
-        @Query('status') status?: BucketListStatus,
+        @Query('status', new ParseEnumPipe(BucketListStatus, { optional: true }))
+        status?: BucketListStatus,
     ) {
         return this.bucketListService.getBucketLists(userId, status);
     }
@@ -68,6 +44,34 @@ export class BucketListController {
         @getUser('id') userId: string,
     ) {
         return this.bucketListService.checkout(id, userId);
+    }
+
+    @Post(':id/item')
+    addItem(
+        @Param('id') id: string,
+        @Body() dto: AddBucketListItemDto,
+        @getUser('id') userId: string,
+    ) {
+        return this.bucketListService.addItem(id, userId, dto);
+    }
+
+    @Patch(':id/item/:itemId')
+    updateItem(
+        @Param('id') id: string,
+        @Param('itemId') itemId: string,
+        @Body() dto: Partial<AddBucketListItemDto>,
+        @getUser('id') userId: string,
+    ) {
+        return this.bucketListService.updateItem(id, itemId, userId, dto);
+    }
+
+    @Delete(':id/item/:itemId')
+    removeItem(
+        @Param('id') id: string,
+        @Param('itemId') itemId: string,
+        @getUser('id') userId: string,
+    ) {
+        return this.bucketListService.removeItem(id, itemId, userId);
     }
 
     @Delete(':id')

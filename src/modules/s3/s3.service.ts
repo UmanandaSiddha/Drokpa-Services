@@ -1,4 +1,4 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ConfigService } from '@nestjs/config';
@@ -25,7 +25,7 @@ export class S3Service {
      * @param file The file information.
      */
     async getUploadUrl(uploadType: UploadType, contextId: string, file: FileInfo): Promise<UploadUrlResponse> {
-        if (!ALLOWED_MIME_TYPES.includes(file.fileType)) {
+        if (!ALLOWED_MIME_TYPES.includes(file.fileType as typeof ALLOWED_MIME_TYPES[number])) {
             throw new BadRequestException('File type not allowed');
         }
 
@@ -52,6 +52,13 @@ export class S3Service {
      * @param files An array of file information objects.
      */
     async getUploadUrls(uploadType: UploadType, contextId: string, files: FileInfo[]): Promise<UploadUrlResponse[]> {
+        const invalidFiles = files.filter(f => !ALLOWED_MIME_TYPES.includes(f.fileType as typeof ALLOWED_MIME_TYPES[number]));
+        if (invalidFiles.length > 0) {
+            throw new BadRequestException(
+                `File type(s) not allowed: ${invalidFiles.map(f => f.fileType).join(', ')}`,
+            );
+        }
+
         const uploadPromises = files.map(async (file) => {
             const key = this._generateS3Key(uploadType, contextId, file.originalFileName);
 
@@ -89,7 +96,7 @@ export class S3Service {
             );
             return { success: true };
         } catch (error) {
-            throw new BadRequestException(`Failed to delete object: ${error.message}`);
+            throw new InternalServerErrorException(`Failed to delete object: ${error.message}`);
         }
     }
 
@@ -101,6 +108,9 @@ export class S3Service {
     private _generateS3Key(uploadType: UploadType, contextId: string, originalFileName: string): string {
         const safeContextId = contextId.replace(/[^a-zA-Z0-9\-_]/g, '');
         const fileExtension = path.extname(originalFileName); // e.g., '.jpg'
+        if (!fileExtension) {
+            throw new BadRequestException('File must have an extension');
+        }
         const uniqueId = crypto.randomUUID();
         return `${uploadType}/${safeContextId}/${uniqueId}${fileExtension}`;
     }

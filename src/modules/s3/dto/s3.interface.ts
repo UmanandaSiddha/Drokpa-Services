@@ -10,8 +10,14 @@ export interface FileInfo {
 
 export enum UploadType {
     AVATAR = 'avatars',
-    MENU_ITEM = 'menu-items',
-    EVENT = 'events',
-    CART_REFERENCE = 'cart-references',
-    APP_BANNER = 'app-banners'
+    TOUR = 'tours',
+    HOMESTAY = 'homestays',
+    ROOM = 'rooms',
+    VEHICLE = 'vehicles',
+    GUIDE = 'guides',
+    PERMIT_DOCUMENT = 'permit-documents',
+    IDENTITY_PROOF = 'identity-proofs',
+    PASSPORT_PHOTO = 'passport-photos',
+    POI = 'poi',
+    REVIEW = 'reviews',
 }

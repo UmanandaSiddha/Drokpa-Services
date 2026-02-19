@@ -1,31 +1,47 @@
-import { IsString, IsDateString, IsInt, Min, IsOptional, IsObject, ValidateIf } from 'class-validator';
+// add-item.dto.ts
+import {
+    IsDateString, IsEnum, IsInt, IsNotEmpty,
+    IsObject, IsOptional, IsUUID, Min, ValidateIf,
+} from 'class-validator';
 import { ProviderType } from 'generated/prisma/enums';
 
 export class AddBucketListItemDto {
-    @IsString()
+    @IsEnum(ProviderType)
     productType: ProviderType;
 
-    @IsString()
-    @ValidateIf((obj) => obj.productType === ProviderType.TOUR_VENDOR)
+    @IsUUID()
+    @IsNotEmpty()
+    @ValidateIf(obj => obj.productType === ProviderType.TOUR_VENDOR)
     tourId?: string;
 
-    @IsString()
-    @ValidateIf((obj) => obj.productType === ProviderType.HOMESTAY_HOST)
+    @IsUUID()
+    @IsNotEmpty()
+    @ValidateIf(obj => obj.productType === ProviderType.HOMESTAY_HOST)
     homestayId?: string;
+
+    @IsUUID()
+    @IsNotEmpty()
+    @ValidateIf(obj => obj.productType === ProviderType.VEHICLE_PARTNER)
+    vehicleId?: string;
+
+    @IsUUID()
+    @IsNotEmpty()
+    @ValidateIf(obj => obj.productType === ProviderType.LOCAL_GUIDE)
+    guideId?: string;
 
     @IsInt()
     @Min(1)
     quantity: number;
 
-    @IsDateString()
     @IsOptional()
+    @IsDateString()
     startDate?: string;
 
-    @IsDateString()
     @IsOptional()
+    @IsDateString()
     endDate?: string;
 
-    @IsObject()
     @IsOptional()
+    @IsObject()
     metadata?: Record<string, any>;
 }

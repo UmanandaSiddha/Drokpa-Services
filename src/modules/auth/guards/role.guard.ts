@@ -5,7 +5,7 @@ import {
 	ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from 'generated/prisma/client';
+import { UserRole } from 'generated/prisma/enums';
 
 @Injectable()
 export class RoleGuard implements CanActivate {
@@ -24,7 +24,10 @@ export class RoleGuard implements CanActivate {
 		const request = context.switchToHttp().getRequest();
 		const user = request.user;
 
-		if (!user || !Array.isArray(user.roles)) {
+		if (!user) {
+			throw new ForbiddenException('Authentication required');
+		}
+		if (!Array.isArray(user.roles)) {
 			throw new ForbiddenException('User roles not found');
 		}
 
