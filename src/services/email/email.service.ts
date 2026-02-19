@@ -19,7 +19,7 @@ export class EmailService {
         const awsRegion = this.configService.get<string>('AWS_REGION');
         const awsAccessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
         const awsSecretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-        
+
         if (awsRegion && awsAccessKeyId && awsSecretAccessKey) {
             this.sesClient = new SESClient({
                 region: awsRegion,
@@ -31,7 +31,7 @@ export class EmailService {
         } else {
             this.logger.warn('AWS SES credentials not configured. Email sending will be disabled.');
         }
-        
+
         this.fromEmail = this.configService.get<string>('SES_FROM_EMAIL') || 'noreply@drokpa.com';
     }
 
@@ -41,7 +41,7 @@ export class EmailService {
      */
     async queueEmail(dto: SendEmailDto): Promise<void> {
         const isProduction = process.env.NODE_ENV === 'production';
-        
+
         if (!isProduction) {
             this.logger.log(`[DEV] Email not queued (production mode only): ${dto.to} - ${dto.subject}`);
             return;
@@ -65,7 +65,7 @@ export class EmailService {
             this.logger.warn('AWS SES client not initialized. Email not sent.');
             return;
         }
-        
+
         try {
             const command = new SendEmailCommand({
                 Source: this.fromEmail,

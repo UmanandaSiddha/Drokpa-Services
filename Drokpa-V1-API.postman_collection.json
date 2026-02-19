@@ -403,13 +403,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\"\n}"
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"otpString\": \"123456\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/auth/verify-otp",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "auth",
                                 "verify-otp"
@@ -555,13 +552,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"resetToken\": \"token-from-email\",\n  \"newPassword\": \"NewSecurePassword123\"\n}"
+                            "raw": "{\n  \"token\": \"token-from-email\",\n  \"password\": \"NewSecurePassword123\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/auth/reset-password",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "auth",
                                 "reset-password"
@@ -637,13 +631,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"title\": \"Himalayan Trek Adventure\",\n  \"description\": \"Experience the majestic Himalayas with guided trekking\",\n  \"type\": \"TREK\",\n  \"basePrice\": 50000,\n  \"discount\": 10,\n  \"duration\": 5,\n  \"imageUrls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ],\n  \"maxCapacity\": 15,\n  \"included\": [\n    \"Meals\",\n    \"Accommodation\",\n    \"Guide\"\n  ],\n  \"notIncluded\": [\n    \"Travel to base\",\n    \"Insurance\"\n  ],\n  \"highlights\": [\n    \"Mountain views\",\n    \"Wildlife spotting\",\n    \"Culture immersion\"\n  ],\n  \"addressId\": null,\n  \"providerId\": null,\n  \"guideId\": null\n}"
+                            "raw": "{\n  \"title\": \"Himalayan Trek Adventure\",\n  \"description\": \"Experience the majestic Himalayas with guided trekking\",\n  \"type\": \"TREK\",\n  \"price\": 50000,\n  \"duration\": 5,\n  \"imageUrls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ],\n  \"maxCapacity\": 15,\n  \"included\": [\n    \"Meals\",\n    \"Accommodation\",\n    \"Guide\"\n  ],\n  \"notIncluded\": [\n    \"Travel to base\",\n    \"Insurance\"\n  ],\n  \"highlights\": [\n    \"Mountain views\",\n    \"Wildlife spotting\",\n    \"Culture immersion\"\n  ]\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/tours",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "tours"
                             ]
@@ -951,13 +942,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"Deluxe Room\",\n  \"description\": \"Spacious room with king bed and mountain view\",\n  \"capacity\": 2,\n  \"basePrice\": 5000,\n  \"discount\": 0,\n  \"bookingCriteria\": \"PER_NIGHT\",\n  \"totalRooms\": 3,\n  \"amenities\": [\n    \"WiFi\",\n    \"Hot Water\",\n    \"AC\",\n    \"TV\"\n  ],\n  \"imageUrls\": [\"https://example.com/room1.jpg\"]\n}"
+                            "raw": "{\n  \"name\": \"Deluxe Room\",\n  \"capacity\": 2,\n  \"basePrice\": 5000,\n  \"totalRooms\": 3\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/homestay/{{homestay_id}}/rooms",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "homestay",
                                 "{{homestay_id}}",
@@ -1049,13 +1037,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"homestayId\": \"{{homestay_id}}\",\n  \"roomId\": \"{{room_id}}\",\n  \"checkIn\": \"2026-03-15\",\n  \"checkOut\": \"2026-03-20\",\n  \"guests\": [\n    {\n      \"fullName\": \"John Doe\",\n      \"email\": \"john@example.com\",\n      \"age\": 30,\n      \"contactNumber\": \"+919876543210\",\n      \"gender\": \"MALE\"\n    }\n  ],\n  \"specialRequests\": \"High floor preferred\"\n}"
+                            "raw": "{\n  \"roomId\": \"{{room_id}}\",\n  \"checkIn\": \"2026-03-15\",\n  \"checkOut\": \"2026-03-20\",\n  \"rooms\": 1,\n  \"guests\": 2,\n  \"specialRequests\": \"High floor preferred\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/booking/homestay/request",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "booking",
                                 "homestay",
@@ -1138,13 +1123,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"confirmedDate\": \"2026-02-20\",\n  \"notes\": \"Booking confirmed. Welcome!\"\n}"
+                            "raw": "{\n  \"notes\": \"Booking confirmed. Welcome!\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/booking/{{booking_id}}/confirm",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "booking",
                                 "{{booking_id}}",
@@ -1268,13 +1250,10 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"razorpayOrderId\": \"order_1234567890\",\n  \"razorpayPaymentId\": \"pay_1234567890\",\n  \"razorpaySignature\": \"signature_hash\"\n}"
+                            "raw": "{\n  \"orderId\": \"order_1234567890\",\n  \"paymentId\": \"pay_1234567890\",\n  \"signature\": \"signature_hash\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/payment/verify",
-                            "host": [
-                                "{{base_url}}"
-                            ],
                             "path": [
                                 "payment",
                                 "verify"
