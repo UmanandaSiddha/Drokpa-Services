@@ -23,6 +23,9 @@ import { ResetPasswordDto } from './dto/reset.password.dto';
 import { SAFE_USER_SELECT, SafeUser } from 'src/utils/auth.helper';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { RedisService } from 'src/services/redis/redis.service';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { FirebaseAdminService } from 'src/services/firebase/firebase-admin.service';
+import type { auth } from 'firebase-admin';
 
 @Injectable()
 export class AuthService {
@@ -34,6 +37,7 @@ export class AuthService {
 		private readonly emailService: EmailService,
 		private readonly onboardingService: OnboardingService,
 		private readonly redisService: RedisService,
+		private readonly firebaseAdmin: FirebaseAdminService,
 	) { }
 
 	// --- Helper Functions ---
@@ -141,6 +145,35 @@ export class AuthService {
 			sameSite: 'lax',
 			path: '/',
 		});
+	}
+
+	private async issueSessionAndTokens(user: SafeUser, res: Response) {
+		const session = await this.databaseService.session.create({
+			data: {
+				userId: user.id,
+				refreshToken: '',
+				expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+			},
+		});
+
+		const accessToken = this.generateToken(user.id, 'ACCESS_TOKEN', null);
+		const refreshToken = this.generateToken(user.id, 'REFRESH_TOKEN', session.id);
+		const hashedToken = await bcrypt.hash(refreshToken, 10);
+
+		await this.databaseService.session.update({
+			where: { id: session.id },
+			data: { refreshToken: hashedToken },
+		});
+
+		const clientRefreshToken = `${session.id}.${refreshToken}`;
+		this.sendToken(res, 'ACCESS_TOKEN', accessToken);
+		this.sendToken(res, 'REFRESH_TOKEN', clientRefreshToken);
+
+		return {
+			message: 'Authenticated successfully',
+			isNewUser: false,
+			data: user,
+		};
 	}
 
 	// --- Services ---
@@ -554,5 +587,123 @@ export class AuthService {
 
 	async invalidateUserCache(userId: string) {
 		await this.redisService.del(`auth:user:${userId}`);
+	}
+
+	async googleAuth(dto: GoogleAuthDto, res: Response) {
+		const { idToken, firstName, lastName } = dto;
+
+		// Verify the Firebase ID token
+		let firebaseUser: auth.DecodedIdToken;
+		try {
+			firebaseUser = await this.firebaseAdmin.verifyIdToken(idToken)
+		} catch {
+			throw new UnauthorizedException('Invalid Google token');
+		}
+
+		const { uid, email, name, phone_number, picture } = firebaseUser;
+		if (!email) throw new BadRequestException('Google account has no email');
+
+		// Check if an AuthIdentity exists for this Google UID
+		const existingIdentity = await this.databaseService.authIdentity.findUnique({
+			where: {
+				provider_providerId: {
+					provider: AuthProvider.GOOGLE,
+					providerId: uid,
+				},
+			},
+			include: {
+				user: {
+					select: {
+						...SAFE_USER_SELECT,
+						roles: true,
+						provider: { select: { id: true } },
+					},
+				},
+			},
+		});
+
+		// Existing Google user — just issue tokens
+		if (existingIdentity) {
+			const user = existingIdentity.user;
+			if (user.isDeleted) throw new ForbiddenException('This account has been deleted.');
+			if (user.isDisabled) throw new ForbiddenException('Account is disabled.');
+
+			return await this.issueSessionAndTokens(user, res);
+		}
+
+		// Check if email is already registered (with password or another method)
+		const existingUser = await this.databaseService.user.findUnique({
+			where: { email },
+			select: {
+				...SAFE_USER_SELECT,
+				roles: true,
+				provider: { select: { id: true } },
+			},
+		});
+
+		if (existingUser) {
+			// Email exists — link Google identity to existing account
+			if (existingUser.isDeleted) throw new ForbiddenException('This account has been deleted.');
+
+			await this.databaseService.authIdentity.create({
+				data: {
+					userId: existingUser.id,
+					provider: AuthProvider.GOOGLE,
+					providerId: uid,
+				},
+			});
+
+			// Mark as verified since Google emails are pre-verified
+			await this.databaseService.user.update({
+				where: { id: existingUser.id },
+				data: { isVerified: true },
+			});
+
+			const updatedUser = { ...existingUser, isVerified: true };
+			return await this.issueSessionAndTokens(updatedUser, res);
+		}
+
+		// Brand new user — need name to create account
+		// If frontend didn't send name, return isNewUser flag
+		const resolvedFirstName = firstName ?? name?.split(' ')[0];
+		const resolvedLastName = lastName ?? name?.split(' ').slice(1).join(' ');
+
+		if (!resolvedFirstName) {
+			// Frontend must show the modal to collect name
+			return { isNewUser: true, email, googleUid: uid };
+		}
+
+		// Create new user with Google identity
+		const newUser = await this.databaseService.user.create({
+			data: {
+				firstName: resolvedFirstName,
+				lastName: resolvedLastName ?? '',
+				email,
+				isVerified: true, // Google accounts are pre-verified
+				roles: {
+					create: {
+						role: this.config.get('DEFAULT_ADMIN_EMAIL') === email
+							? UserRole.ADMIN
+							: UserRole.USER,
+					},
+				},
+				phoneNumber: phone_number ?? null,
+				avatarUrl: picture ?? null,
+				authIdentities: {
+					create: {
+						provider: AuthProvider.GOOGLE,
+						providerId: uid,
+					},
+				},
+			},
+			select: {
+				...SAFE_USER_SELECT,
+				roles: true,
+				provider: { select: { id: true } },
+			},
+		});
+
+		const safeUser: SafeUser = { ...newUser, providerId: newUser.provider?.id };
+		return await this.issueSessionAndTokens(safeUser, res);
 	}
 }

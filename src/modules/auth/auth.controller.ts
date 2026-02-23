@@ -19,6 +19,7 @@ import { AuthGuard, getUser } from './guards/auth.guard';
 import { Request } from 'express';
 import { RequestDto } from './dto/request.dto';
 import { ResetPasswordDto } from './dto/reset.password.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -71,5 +72,14 @@ export class AuthController {
 	@Post('reset-password')
 	resetPassword(@Body() dto: ResetPasswordDto) {
 		return this.authService.resetPassword(dto);
+	}
+
+	// GOOGLE AUTH
+	@Post('google')
+	async googleAuth(
+		@Body() dto: GoogleAuthDto,
+		@Res({ passthrough: true }) res: Response,
+	) {
+		return this.authService.googleAuth(dto, res);
 	}
 }

@@ -32,6 +32,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { PayoutModule } from './modules/payout/payout.module';
 import { RoomAvailabilityModule } from './modules/room-availibility/room-availibility.module';
+import { FirebaseAdminModule } from './services/firebase/firebase-admin.module';
 
 @Module({
 	imports: [
@@ -45,6 +46,7 @@ import { RoomAvailabilityModule } from './modules/room-availibility/room-availib
 		QueueModule,
 		HealthModule,
 		RedisModule,
+		FirebaseAdminModule,
 		S3Module,
 		AuthModule,
 		UserModule,

@@ -141,7 +141,7 @@ export class UserService {
     // USER
     // ─────────────────────────────────────────────
 
-    // USER: Get User Profile (no bookings — fetched separately)
+    // USER: Get User Profile
     async userProfile(userId: string) {
         const user = await this.databaseService.user.findUnique({
             where: { id: userId, isDeleted: false },
