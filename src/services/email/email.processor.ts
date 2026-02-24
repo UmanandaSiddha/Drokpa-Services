@@ -1,6 +1,6 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { LoggerService } from '../logger/logger.service';
 import { EMAIL_QUEUE } from 'src/config/constants';
 import { EmailService } from './email.service';
 import { SendEmailDto } from './dto/send-email.dto';
@@ -9,7 +9,7 @@ import { SendEmailDto } from './dto/send-email.dto';
     concurrency: 5,
 })
 export class EmailProcessor extends WorkerHost {
-    private readonly logger = new Logger(EmailProcessor.name);
+    private readonly logger = new LoggerService(EmailProcessor.name);
 
     constructor(
         private readonly emailService: EmailService,
@@ -22,7 +22,7 @@ export class EmailProcessor extends WorkerHost {
         this.logger.log(`Processing email job: ${job.name} with ID: ${job.id}, To: ${job.data.to}`);
 
         const isProduction = process.env.NODE_ENV === 'production';
-        
+
         if (!isProduction) {
             this.logger.log(`[DEV] Email job ${job.id} skipped (production mode only)`);
             return { success: true, skipped: true, message: 'Email skipped in development mode' };

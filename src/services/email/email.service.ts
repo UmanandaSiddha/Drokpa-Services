@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { LoggerService } from '../logger/logger.service';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -8,7 +9,7 @@ import { SendEmailDto } from './dto/send-email.dto';
 
 @Injectable()
 export class EmailService {
-    private readonly logger = new Logger(EmailService.name);
+    private readonly logger = new LoggerService(EmailService.name);
     private readonly sesClient?: SESClient;
     private readonly fromEmail: string;
 

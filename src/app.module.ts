@@ -33,6 +33,8 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { PayoutModule } from './modules/payout/payout.module';
 import { RoomAvailabilityModule } from './modules/room-availibility/room-availibility.module';
 import { FirebaseAdminModule } from './services/firebase/firebase-admin.module';
+import { ServiceWaitlistModule } from './modules/service-waitlist/service-waitlist.module';
+import { CommunityModule } from './modules/community/community.module';
 
 @Module({
 	imports: [
@@ -70,6 +72,8 @@ import { FirebaseAdminModule } from './services/firebase/firebase-admin.module';
 		WebhookModule,
 		ToursModule,
 		HomestayModule,
+		ServiceWaitlistModule,
+		CommunityModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

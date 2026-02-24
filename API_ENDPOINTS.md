@@ -32,6 +32,8 @@ Complete REST API documentation for Drokpa V1 platform. All endpoints return JSO
 18. [Admin Dashboard](#admin-dashboard)
 19. [Health & Monitoring](#health--monitoring)
 20. [Payouts](#payouts)
+21. [Webhooks](#webhooks)
+22. [Implementation Completeness Check](#implementation-completeness-check)
 
 ---
 
@@ -252,6 +254,52 @@ Authorization: Bearer <access_token>
   "message": "Password reset successfully"
 }
 ```
+
+---
+
+### Google OAuth Authentication
+
+**POST** `/auth/google`
+
+**Authentication:** None
+
+**Request Body:**
+```json
+{
+  "idToken": "google-id-token-from-firebase",
+  "firstName": "John",
+  "lastName": "Doe"
+}
+```
+
+**Response (201 - New User):**
+```json
+{
+  "isNewUser": true,
+  "email": "user@gmail.com",
+  "googleUid": "google-uid-12345"
+}
+```
+
+**Response (200 - Existing User):**
+```json
+{
+  "message": "Authenticated successfully",
+  "isNewUser": false,
+  "data": {
+    "id": "uuid",
+    "email": "user@gmail.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "roles": ["USER"]
+  }
+}
+```
+
+**Notes:**
+- Frontend receives `isNewUser: true` → show modal to collect full name
+- Google email is auto-verified (isVerified = true)
+- Supports account linking if email already exists
 
 ---
 
@@ -805,6 +853,63 @@ Authorization: Bearer <access_token>
   "rooms": 1,
   "guests": 2,
   "specialRequests": "High floor preferred"
+}
+```
+
+**Response (201):** Created booking object
+
+---
+
+### Create Vehicle Booking
+
+**POST** `/booking/vehicle/request`
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "vehicleId": "uuid",
+  "startDate": "2026-03-15",
+  "endDate": "2026-03-20",
+  "bookingMode": "SELF_DRIVE",
+  "guests": [
+    {
+      "fullName": "John Doe",
+      "email": "john@example.com",
+      "age": 30,
+      "contactNumber": "+919876543210",
+      "gender": "MALE"
+    }
+  ]
+}
+```
+
+**Response (201):** Created booking object
+
+---
+
+### Create Guide Booking
+
+**POST** `/booking/guide/request`
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "guideId": "uuid",
+  "startDate": "2026-03-15",
+  "endDate": "2026-03-20",
+  "guests": [
+    {
+      "fullName": "John Doe",
+      "email": "john@example.com",
+      "age": 30,
+      "contactNumber": "+919876543210",
+      "gender": "MALE"
+    }
+  ]
 }
 ```
 
@@ -2294,6 +2399,60 @@ Paginated responses follow this format:
 
 ---
 
+## Webhooks
+
+### Handle Razorpay Webhook
+
+**POST** `/webhook/razorpay`
+
+**Authentication:** Signature verification (x-razorpay-signature header)
+
+**Headers:**
+```
+x-razorpay-signature: <signature-hash>
+```
+
+**Request Body:**
+```json
+{
+  "event": "payment.authorized",
+  "created_at": 1649078733,
+  "contains": ["payment"],
+  "data": {
+    "entity": {
+      "id": "pay_...",
+      "amount": 50000,
+      "currency": "INR",
+      "status": "authorized",
+      "method": "card",
+      "order_id": "order_..."
+    }
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "status": "processed",
+  "message": "Webhook processed successfully"
+}
+```
+
+**Supported Events:**
+- `payment.authorized` - Payment authorized
+- `payment.failed` - Payment failed
+- `payment.captured` - Payment captured
+- `refund.created` - Refund initiated
+- `refund.failed` - Refund failed
+
+**Notes:**
+- Webhook signature is validated using RAZORPAY_WEBHOOK_SECRET
+- Failed signature verification returns 401 Unauthorized
+- Idempotent processing — safe to retry failed deliveries
+
+---
+
 ## Rate Limiting
 
 - Default: 100 requests per minute per IP
@@ -2318,6 +2477,47 @@ The following events trigger webhooks (configured in admin panel):
 
 ---
 
+---
+
+## Implementation Completeness Check
+
+### ✅ Fully Implemented & Documented
+- **Authentication** - All endpoints (OTP, signing in/up, refresh, logout, password reset, Google OAuth)
+- **Users** - Profile management, bookings, reviews, bucket lists
+- **Tours** - Create, list, update, deactivate, itinerary management
+- **Homestays & Rooms** - Creation, availability management, tags, facilities
+- **Bookings** - Tour, homestay, vehicle, and guide bookings with status management
+- **Payments** - Creation, verification, refunds (Razorpay integration)
+- **Reviews** - Create, update, delete, view by target
+- **Bucket Lists** - Full CRUD with item management
+- **Onboarding** - Provider invitation and completion flow
+- **Permits** - Document submission and approval workflow
+- **Room Availability** - Host can set, update, and block dates
+- **Memories** - Create, list, update, delete
+- **Local Guides** - CRUD with nearby search
+- **Vehicles** - CRUD with nearby search
+- **S3 File Upload** - Presigned URL generation for single and bulk uploads
+- **Feature Flags** - Enable/disable services at runtime
+- **Admin Dashboard** - Stats, bookings, providers, payments management
+- **Health Monitoring** - Redis health checks and queue statistics
+- **Payouts** - Provider payout tracking and status management
+- **Service Waitlist** - Public join + admin management endpoints
+- **Community Join Requests** - Public join + admin review/notes/stats
+
+### ❌ Not Implemented (Schema exists but no endpoints/usage)
+- **TemporaryUpload** - Designed for tracking temporary S3 uploads, but not integrated
+  - *Recommendation*: Use for managing uploaded files before associating to permits/documents
+- **Destination** - Pre-built travel destination packages
+  - *Recommendation*: Implement as premium feature or remove if not needed
+
+### 📋 Missing Endpoints (Controllers exist but docs outdated)
+The following endpoints are implemented but may need doc updates:
+- Tours: Add/reorder itinerary POIs endpoints
+- Homestays: Add room tags endpoint
+- Video/Image management for entities
+
+---
+
 ## Contact & Support
 
 For API issues or questions:
@@ -2327,6 +2527,6 @@ For API issues or questions:
 
 ---
 
-**Last Updated:** February 19, 2026
+**Last Updated:** February 25, 2026
 **API Version:** V1
-**Documentation Version:** 1.0
+**Documentation Version:** 1.1

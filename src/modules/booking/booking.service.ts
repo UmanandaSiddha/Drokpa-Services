@@ -3,11 +3,11 @@ import {
     Injectable,
     NotFoundException,
     ForbiddenException,
-    Logger,
 } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { EmailService } from 'src/services/email/email.service';
 import { AdminService } from 'src/modules/admin/admin.service';
+import { LoggerService } from 'src/services/logger/logger.service';
 import { CreateTourBookingDto } from './dto/create-tour-booking.dto';
 import { CreateHomestayBookingDto } from './dto/create-homestay-booking.dto';
 import { CreateVehicleBookingDto } from './dto/create-vehicle-booking.dto';
@@ -26,7 +26,7 @@ const PAYMENT_WINDOW_MINUTES = 30;
 
 @Injectable()
 export class BookingService {
-    private readonly logger = new Logger(BookingService.name);
+    private readonly logger = new LoggerService(BookingService.name);
 
     constructor(
         private readonly databaseService: DatabaseService,
@@ -147,10 +147,10 @@ export class BookingService {
             );
         } catch (err) {
             // Notification failures must never break the booking flow
-            this.logger.error('Booking notification failed', {
-                bookingId: payload.bookingId,
-                error: err,
-            });
+            this.logger.error(
+                `Booking notification failed for ${payload.bookingId}: ${err instanceof Error ? err.message : String(err)}`,
+                err instanceof Error ? err.stack : undefined,
+            );
         }
     }
 
@@ -615,7 +615,10 @@ export class BookingService {
                     <p><strong>Payment deadline:</strong> ${expiresAt.toISOString()}</p>
                 `,
             }).catch(err =>
-                this.logger.error('Failed to send confirm email', err),
+                this.logger.error(
+                    `Failed to send confirm email for booking ${bookingId}: ${err instanceof Error ? err.message : String(err)}`,
+                    err instanceof Error ? err.stack : undefined,
+                ),
             );
         }
 
@@ -719,7 +722,10 @@ export class BookingService {
                     <p>Please feel free to explore other options on Drokpa.</p>
                 `,
             }).catch(err =>
-                this.logger.error('Failed to send rejection email', err),
+                this.logger.error(
+                    `Failed to send rejection email for booking ${bookingId}: ${err instanceof Error ? err.message : String(err)}`,
+                    err instanceof Error ? err.stack : undefined,
+                ),
             );
         }
 

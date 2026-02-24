@@ -3,9 +3,9 @@ import {
     NotFoundException,
     BadRequestException,
     ForbiddenException,
-    Logger,
 } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
+import { LoggerService } from 'src/services/logger/logger.service';
 import { CreateBucketListDto } from './dto/create-bucketlist.dto';
 import { AddBucketListItemDto } from './dto/add-item.dto';
 import { BucketListStatus, ProviderType } from 'generated/prisma/enums';
@@ -37,7 +37,7 @@ const ITEM_INCLUDE = {
 
 @Injectable()
 export class BucketListService {
-    private readonly logger = new Logger(BucketListService.name);
+    private readonly logger = new LoggerService(BucketListService.name);
 
     constructor(private readonly databaseService: DatabaseService) { }
 

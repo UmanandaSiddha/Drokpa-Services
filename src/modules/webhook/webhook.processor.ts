@@ -1,6 +1,6 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { LoggerService } from 'src/services/logger/logger.service';
 import { WEBHOOK_QUEUE } from 'src/config/constants';
 import { DatabaseService } from 'src/services/database/database.service';
 import { EmailService } from 'src/services/email/email.service';
@@ -15,7 +15,7 @@ interface WebhookJobData {
 
 @Processor(WEBHOOK_QUEUE, { concurrency: 3 })
 export class WebhookProcessor extends WorkerHost {
-    private readonly logger = new Logger(WebhookProcessor.name);
+    private readonly logger = new LoggerService(WebhookProcessor.name);
 
     constructor(
         private readonly databaseService: DatabaseService,

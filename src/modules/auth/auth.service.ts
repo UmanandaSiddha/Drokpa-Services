@@ -628,6 +628,7 @@ export class AuthService {
 			if (user.isDeleted) throw new ForbiddenException('This account has been deleted.');
 			if (user.isDisabled) throw new ForbiddenException('Account is disabled.');
 
+			await this.invalidateUserCache(user.id);
 			return await this.issueSessionAndTokens(user, res);
 		}
 
@@ -656,8 +657,14 @@ export class AuthService {
 			// Mark as verified since Google emails are pre-verified
 			await this.databaseService.user.update({
 				where: { id: existingUser.id },
-				data: { isVerified: true },
+				data: {
+					isVerified: true,
+					phoneNumber: existingUser.phoneNumber ? existingUser.phoneNumber : phone_number ?? null,
+					avatarUrl: existingUser.avatarUrl ? existingUser.avatarUrl : picture ?? null,
+				},
 			});
+
+			await this.invalidateUserCache(existingUser.id);
 
 			const updatedUser = { ...existingUser, isVerified: true };
 			return await this.issueSessionAndTokens(updatedUser, res);
@@ -702,6 +709,7 @@ export class AuthService {
 				provider: { select: { id: true } },
 			},
 		});
+		await this.invalidateUserCache(newUser.id);
 
 		const safeUser: SafeUser = { ...newUser, providerId: newUser.provider?.id };
 		return await this.issueSessionAndTokens(safeUser, res);

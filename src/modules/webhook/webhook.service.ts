@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DatabaseService } from 'src/services/database/database.service';
@@ -7,7 +7,7 @@ import { Prisma } from 'generated/prisma/client';
 
 @Injectable()
 export class WebhookService {
-    private readonly logger = new Logger(WebhookService.name);
+    private readonly logger = new LoggerService(WebhookService.name);
 
     constructor(
         private readonly databaseService: DatabaseService,

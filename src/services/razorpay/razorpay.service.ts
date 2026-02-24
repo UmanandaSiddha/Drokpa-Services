@@ -3,10 +3,10 @@ import {
     Inject,
     BadRequestException,
     InternalServerErrorException,
-    Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RAZORPAY_CLIENT } from 'src/config/constants';
+import { LoggerService } from '../logger/logger.service';
 import * as crypto from 'crypto';
 import Razorpay = require('razorpay');
 import { Orders } from 'razorpay/dist/types/orders';
@@ -15,7 +15,7 @@ import { Refunds } from 'razorpay/dist/types/refunds';
 
 @Injectable()
 export class RazorpayService {
-    private readonly logger = new Logger(RazorpayService.name);
+    private readonly logger = new LoggerService(RazorpayService.name);
 
     constructor(
         @Inject(RAZORPAY_CLIENT) private readonly razorpay: Razorpay | null,

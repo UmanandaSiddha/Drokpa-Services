@@ -313,7 +313,7 @@ model Permit {
     passportPhoto  Document?     @relation("PassportPhoto", fields: [passportPhotoId], references: [id])
 
     @@index([bookingItemId])
-    @@index([status])
+    @@index([status, updatedAt(sort: Desc)])
     @@index([participantId])
 }
 
@@ -325,6 +325,7 @@ model User {
     email                   String    @unique
     firstName               String
     lastName                String
+    status                  String?   @db.Text
     passwordHash            String?
     isVerified              Boolean   @default(false)
     isOnline                Boolean   @default(false)
@@ -357,7 +358,7 @@ model User {
     bucketLists    BucketList[]
     documents      Document[]
 
-    @@index([email])
+    @@index([email, isVerified])
     @@index([isDisabled, isVerified])
     @@index([isDeleted])
     @@index([isDeleted, createdAt])
@@ -393,7 +394,7 @@ model Session {
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([refreshToken])
-    @@index([userId])
+    @@index([userId, expiresAt])
 }
 
 model Onboarding {
@@ -484,8 +485,8 @@ model Review {
     homestay Homestay? @relation(fields: [homestayId], references: [id])
 
     // See note above — enforce uniqueness via partial indexes in migration SQL
-    @@index([tourId])
-    @@index([homestayId])
+    @@index([tourId, rating(sort: Desc)])
+    @@index([homestayId, rating(sort: Desc)])
     @@index([userId])
     @@index([rating])
 }
@@ -715,13 +716,14 @@ model HomestayRoom {
 model RoomAvailability {
     id        String   @id @default(uuid())
     roomId    String
-    date      DateTime @db.Date // FIX: use Date type to avoid TZ drift
+    date      DateTime @db.Date // FIXED: using Date type to prevent timezone drift
     available Int
+    price     Int? // Optional: allow per-date pricing override
 
     room HomestayRoom @relation(fields: [roomId], references: [id])
 
     @@unique([roomId, date])
-    @@index([date])
+    @@index([roomId, date(sort: Desc)])
 }
 
 model RoomBooking {
@@ -784,7 +786,7 @@ model Booking {
     payment Payment[]
     items   BookingItem[]
 
-    @@index([userId, status])
+    @@index([userId, status, createdAt(sort: Desc)])
     @@index([status, expiresAt])
     @@index([createdAt])
 }
@@ -893,7 +895,7 @@ model Payment {
     payouts ProviderPayout[]
     webhook WebhookEvent[]
 
-    @@index([bookingId])
+    @@index([bookingId, status])
     @@index([status])
     @@index([providerOrderId])
 }
@@ -938,7 +940,7 @@ model ProviderPayout {
     payment     Payment?    @relation(fields: [paymentId], references: [id])
     provider    Provider    @relation(fields: [providerId], references: [id])
 
-    @@index([providerId, status])
+    @@index([providerId, status, createdAt(sort: Desc)])
     @@index([bookingItemId])
 }
 

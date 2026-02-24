@@ -3,11 +3,11 @@ import {
     BadRequestException,
     NotFoundException,
     ForbiddenException,
-    Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from 'src/services/database/database.service';
 import { RazorpayService } from 'src/services/razorpay/razorpay.service';
+import { LoggerService } from 'src/services/logger/logger.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { CreateRefundDto } from './dto/refund.dto';
@@ -20,7 +20,7 @@ import {
 
 @Injectable()
 export class PaymentService {
-    private readonly logger = new Logger(PaymentService.name);
+    private readonly logger = new LoggerService(PaymentService.name);
 
     constructor(
         private readonly databaseService: DatabaseService,
