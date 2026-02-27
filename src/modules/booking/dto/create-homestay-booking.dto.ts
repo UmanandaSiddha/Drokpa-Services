@@ -24,4 +24,9 @@ export class CreateHomestayBookingDto {
     @IsOptional()
     @IsString()
     specialRequests?: string;
+
+    /** Optional promo / coupon code to apply at booking time */
+    @IsOptional()
+    @IsString()
+    couponCode?: string;
 }

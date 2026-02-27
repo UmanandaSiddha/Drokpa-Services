@@ -8,6 +8,7 @@ import { DatabaseService } from 'src/services/database/database.service';
 import { EmailService } from 'src/services/email/email.service';
 import { AdminService } from 'src/modules/admin/admin.service';
 import { LoggerService } from 'src/services/logger/logger.service';
+import { CouponService } from 'src/modules/coupon/coupon.service';
 import { CreateTourBookingDto } from './dto/create-tour-booking.dto';
 import { CreateHomestayBookingDto } from './dto/create-homestay-booking.dto';
 import { CreateVehicleBookingDto } from './dto/create-vehicle-booking.dto';
@@ -19,6 +20,7 @@ import {
     BookingSource,
     ProviderType,
     PermitStatus,
+    UserRole,
 } from 'generated/prisma/enums';
 
 // Payment window: how long a user has to complete payment after confirmation
@@ -32,6 +34,7 @@ export class BookingService {
         private readonly databaseService: DatabaseService,
         private readonly emailService: EmailService,
         private readonly adminService: AdminService,
+        private readonly couponService: CouponService,
     ) { }
 
     // ─────────────────────────────────────────
@@ -88,6 +91,18 @@ export class BookingService {
             throw new ForbiddenException('User does not have a provider profile');
         }
         return user.provider;
+    }
+
+    /**
+     * Returns the UserRole[] for a given userId.
+     * Used to pass role context to the coupon validation engine.
+     */
+    private async getUserRoles(userId: string): Promise<UserRole[]> {
+        const rolesMaps = await this.databaseService.userRoleMap.findMany({
+            where: { userId },
+            select: { role: true },
+        });
+        return rolesMaps.map(r => r.role);
     }
 
     /**
@@ -198,6 +213,23 @@ export class BookingService {
         const finalPrice = tour.finalPrice;
         const totalAmount = finalPrice * dto.guests.length;
 
+        // ── Coupon: validate and compute discount (before transaction) ────────
+        // We validate outside the tx so failed validation throws cleanly.
+        // recordUsage() is called AFTER the tx so we never hold the DB locked.
+        let couponResult: Awaited<ReturnType<CouponService['validateAndCompute']>> | null = null;
+        if (dto.couponCode) {
+            const userRoles = await this.getUserRoles(userId);
+            couponResult = await this.couponService.validateAndCompute(dto.couponCode, {
+                userId,
+                userRoles,
+                orderAmount: totalAmount,
+                participants: dto.guests.length,
+                productType: ProviderType.TOUR_VENDOR,
+                productId: tour.id,
+            });
+        }
+        const discountAmount = couponResult?.discountAmount ?? 0;
+
         const booking = await this.databaseService.$transaction(async tx => {
             const newBooking = await tx.booking.create({
                 data: {
@@ -205,6 +237,11 @@ export class BookingService {
                     status: BookingStatus.REQUESTED,
                     source: BookingSource.ONLINE,
                     totalAmount,
+                    discountAmount,
+                    ...(couponResult && {
+                        couponId: couponResult.couponId,
+                        couponCode: couponResult.couponCode,
+                    }),
                 },
             });
 
@@ -252,6 +289,16 @@ export class BookingService {
             return newBooking;
         });
 
+        // Record coupon usage AFTER the transaction (non-blocking audit)
+        if (couponResult) {
+            await this.couponService.recordUsage(
+                couponResult.couponId,
+                userId,
+                booking.id,
+                discountAmount,
+            );
+        }
+
         // Notifications run after transaction — never inside it
         await this.sendBookingNotifications({
             bookingId: booking.id,
@@ -296,6 +343,22 @@ export class BookingService {
 
         const providerEmail = room.homestay.provider.user?.email ?? null;
 
+        // ── Coupon: validate BEFORE the transaction to keep tx short and avoid scope issues ──
+        let couponResult: Awaited<ReturnType<CouponService['validateAndCompute']>> | null = null;
+        if (dto.couponCode) {
+            // totalAmount needed for validation — compute it pre-tx from known room prices
+            const preTxTotalAmount = room.finalPrice * nights * dto.rooms;
+            const userRoles = await this.getUserRoles(userId);
+            couponResult = await this.couponService.validateAndCompute(dto.couponCode, {
+                userId,
+                userRoles,
+                orderAmount: preTxTotalAmount,
+                productType: ProviderType.HOMESTAY_HOST,
+                productId: dto.roomId,
+            });
+        }
+        const discountAmount = couponResult?.discountAmount ?? 0;
+
         const booking = await this.databaseService.$transaction(async tx => {
             // Lock availability rows for the date range inside the transaction
             const availability = await tx.roomAvailability.findMany({
@@ -331,6 +394,11 @@ export class BookingService {
                     status: BookingStatus.REQUESTED,
                     source: BookingSource.ONLINE,
                     totalAmount,
+                    discountAmount,
+                    ...(couponResult && {
+                        couponId: couponResult.couponId,
+                        couponCode: couponResult.couponCode,
+                    }),
                 },
             });
 
@@ -376,6 +444,16 @@ export class BookingService {
             return newBooking;
         });
 
+        // Record coupon usage AFTER tx
+        if (couponResult) {
+            await this.couponService.recordUsage(
+                couponResult.couponId,
+                userId,
+                booking.id,
+                discountAmount,
+            );
+        }
+
         await this.sendBookingNotifications({
             bookingId: booking.id,
             userId,
@@ -409,6 +487,34 @@ export class BookingService {
             throw new BadRequestException('Vehicle is not available');
         }
 
+        // ── Overlap conflict check ──────────────────────────────────────────
+        // Two date ranges [A, B) and [C, D) overlap when A < D and B > C.
+        // We only block active (non-rejected, non-cancelled, non-expired) bookings.
+        const overlappingItem = await this.databaseService.bookingItem.findFirst({
+            where: {
+                productId: dto.vehicleId,
+                productType: ProviderType.VEHICLE_PARTNER,
+                startDate: { lt: endDate },
+                endDate: { gt: startDate },
+                booking: {
+                    status: {
+                        in: [
+                            BookingStatus.REQUESTED,
+                            BookingStatus.AWAITING_PAYMENT,
+                            BookingStatus.CONFIRMED,
+                        ],
+                    },
+                },
+            },
+            select: { id: true },
+        });
+
+        if (overlappingItem) {
+            throw new BadRequestException(
+                'This vehicle is already booked for the selected dates. Please choose different dates.',
+            );
+        }
+
         const days = Math.ceil(
             (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
         );
@@ -418,6 +524,20 @@ export class BookingService {
         const totalAmount = finalPrice * days * dto.quantity;
         const providerEmail = vehicle.provider.user?.email ?? null;
 
+        // ── Coupon: validate outside the transaction ───────────────────────
+        let couponResult: Awaited<ReturnType<CouponService['validateAndCompute']>> | null = null;
+        if (dto.couponCode) {
+            const userRoles = await this.getUserRoles(userId);
+            couponResult = await this.couponService.validateAndCompute(dto.couponCode, {
+                userId,
+                userRoles,
+                orderAmount: totalAmount,
+                productType: ProviderType.VEHICLE_PARTNER,
+                productId: vehicle.id,
+            });
+        }
+        const discountAmount = couponResult?.discountAmount ?? 0;
+
         const booking = await this.databaseService.$transaction(async tx => {
             const newBooking = await tx.booking.create({
                 data: {
@@ -425,6 +545,11 @@ export class BookingService {
                     status: BookingStatus.REQUESTED,
                     source: BookingSource.ONLINE,
                     totalAmount,
+                    discountAmount,
+                    ...(couponResult && {
+                        couponId: couponResult.couponId,
+                        couponCode: couponResult.couponCode,
+                    }),
                 },
             });
 
@@ -446,6 +571,16 @@ export class BookingService {
 
             return newBooking;
         });
+
+        // Record coupon usage AFTER tx
+        if (couponResult) {
+            await this.couponService.recordUsage(
+                couponResult.couponId,
+                userId,
+                booking.id,
+                discountAmount,
+            );
+        }
 
         await this.sendBookingNotifications({
             bookingId: booking.id,
@@ -480,6 +615,34 @@ export class BookingService {
             throw new BadRequestException('Guide is not available');
         }
 
+        // ── Overlap conflict check ──────────────────────────────────────────
+        // A guide typically works with one group at a time.
+        // Block bookings that overlap with any active booking for the same guide.
+        const overlappingItem = await this.databaseService.bookingItem.findFirst({
+            where: {
+                productId: dto.guideId,
+                productType: ProviderType.LOCAL_GUIDE,
+                startDate: { lt: endDate },
+                endDate: { gt: startDate },
+                booking: {
+                    status: {
+                        in: [
+                            BookingStatus.REQUESTED,
+                            BookingStatus.AWAITING_PAYMENT,
+                            BookingStatus.CONFIRMED,
+                        ],
+                    },
+                },
+            },
+            select: { id: true },
+        });
+
+        if (overlappingItem) {
+            throw new BadRequestException(
+                'This guide is already booked for the selected dates. Please choose different dates.',
+            );
+        }
+
         const days = Math.ceil(
             (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
         );
@@ -489,6 +652,20 @@ export class BookingService {
         const totalAmount = finalPrice * days * dto.quantity;
         const providerEmail = guide.provider.user?.email ?? null;
 
+        // ── Coupon: validate outside the transaction ───────────────────────
+        let couponResult: Awaited<ReturnType<CouponService['validateAndCompute']>> | null = null;
+        if (dto.couponCode) {
+            const userRoles = await this.getUserRoles(userId);
+            couponResult = await this.couponService.validateAndCompute(dto.couponCode, {
+                userId,
+                userRoles,
+                orderAmount: totalAmount,
+                productType: ProviderType.LOCAL_GUIDE,
+                productId: guide.id,
+            });
+        }
+        const discountAmount = couponResult?.discountAmount ?? 0;
+
         const booking = await this.databaseService.$transaction(async tx => {
             const newBooking = await tx.booking.create({
                 data: {
@@ -496,6 +673,11 @@ export class BookingService {
                     status: BookingStatus.REQUESTED,
                     source: BookingSource.ONLINE,
                     totalAmount,
+                    discountAmount,
+                    ...(couponResult && {
+                        couponId: couponResult.couponId,
+                        couponCode: couponResult.couponCode,
+                    }),
                 },
             });
 
@@ -517,6 +699,16 @@ export class BookingService {
 
             return newBooking;
         });
+
+        // Record coupon usage AFTER tx
+        if (couponResult) {
+            await this.couponService.recordUsage(
+                couponResult.couponId,
+                userId,
+                booking.id,
+                discountAmount,
+            );
+        }
 
         await this.sendBookingNotifications({
             bookingId: booking.id,
@@ -708,6 +900,13 @@ export class BookingService {
                     cancelledAt: new Date(),
                 },
             });
+        }
+
+        // ── Coupon: free up the usage slot if the booking had a coupon applied ──────
+        // Must be called AFTER the DB update so the slot is only freed on success.
+        // Non-blocking — booking rejection is already persisted above.
+        if (booking.couponId) {
+            await this.couponService.decrementCurrentUses(booking.couponId);
         }
 
         if (booking.user?.email) {

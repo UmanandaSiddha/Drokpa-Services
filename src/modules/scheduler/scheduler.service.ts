@@ -30,7 +30,11 @@ export class SchedulerService {
                 status: BookingStatus.AWAITING_PAYMENT,
                 expiresAt: { lt: new Date() },
             },
-            include: { items: true },
+            select: {
+                id: true,
+                couponId: true, // needed to decrement coupon usage on expiry
+                items: true,
+            },
         });
 
         if (!expiredBookings.length) return;
@@ -73,6 +77,21 @@ export class SchedulerService {
                         },
                     });
                 });
+
+                // ── Coupon: free up the usage slot now that the booking has expired ──────
+                // Done outside the tx so a coupon decrement failure doesn't roll back expiry.
+                // updateMany with gt:0 guard ensures currentUses never goes negative.
+                if (booking.couponId) {
+                    await this.databaseService.coupon.updateMany({
+                        where: { id: booking.couponId, currentUses: { gt: 0 } },
+                        data: { currentUses: { decrement: 1 } },
+                    }).catch(err =>
+                        this.logger.error(
+                            `Failed to decrement coupon ${booking.couponId} on booking ${booking.id} expiry`,
+                            err,
+                        ),
+                    );
+                }
 
                 this.logger.log(`Booking ${booking.id} expired and availability restored`);
             } catch (err) {
@@ -131,12 +150,17 @@ export class SchedulerService {
                 // Send expiry notification email if participant info available
                 if (permit.participant?.email) {
                     try {
-                        // TODO: Implement sendPermitExpiryEmail in EmailService
-                        // await this.emailService.sendPermitExpiryEmail(permit.participant.email, {
-                        //     name: permit.participant.fullName,
-                        //     permitId: permit.id,
-                        // });
-                        this.logger.debug(`Would send expiry email to ${permit.participant.email}`);
+                        await this.emailService.queueEmail({
+                            to: permit.participant.email,
+                            subject: 'Your Drokpa Permit Has Expired',
+                            html: `
+                                <p>Dear ${permit.participant.fullName ?? 'Valued Traveller'},</p>
+                                <p>Your permit (ID: <strong>${permit.id}</strong>) has expired as it has been more than 6 months since approval.</p>
+                                <p>If you plan to travel again, please submit a new permit application through the Drokpa platform.</p>
+                                <p>Thank you for choosing Drokpa.</p>
+                            `,
+                        });
+                        this.logger.debug(`Permit expiry email sent to ${permit.participant.email}`);
                     } catch (emailError) {
                         this.logger.error(`Failed to send expiry email for permit ${permit.id}`, emailError);
                     }

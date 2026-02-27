@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateMemoryDto } from './dto/create-memory.dto';
 
@@ -12,7 +12,9 @@ export class MemoriesService {
         return this.databaseService.memories.create({
             data: {
                 userId,
-                ...dto,
+                title: dto.title,
+                description: dto.description ?? null,
+                imageUrls: dto.imageUrls,
             },
         });
     }
@@ -74,7 +76,7 @@ export class MemoriesService {
         }
 
         if (memory.userId !== userId) {
-            throw new BadRequestException('Unauthorized to update this memory');
+            throw new ForbiddenException('You do not have permission to update this memory');
         }
 
         return this.databaseService.memories.update({
@@ -93,7 +95,7 @@ export class MemoriesService {
         }
 
         if (memory.userId !== userId) {
-            throw new BadRequestException('Unauthorized to delete this memory');
+            throw new ForbiddenException('You do not have permission to delete this memory');
         }
 
         await this.databaseService.memories.delete({

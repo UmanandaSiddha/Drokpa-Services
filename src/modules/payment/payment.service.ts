@@ -53,12 +53,17 @@ export class PaymentService {
             );
         }
 
-        // Derive total from booking items — never trust client-sent amount blindly
-        const totalAmount = booking.items.reduce((sum, item) => sum + item.totalAmount, 0);
+        // Derive gross total from booking items — never trust client-sent amount blindly
+        const itemsTotal = booking.items.reduce((sum, item) => sum + item.totalAmount, 0);
 
-        if (dto.amount !== totalAmount) {
+        // Deduct coupon discount if one was applied at booking time
+        const discountAmount = booking.discountAmount ?? 0;
+        const expectedAmount = itemsTotal - discountAmount;
+
+        if (dto.amount !== expectedAmount) {
             throw new BadRequestException(
-                `Payment amount ₹${dto.amount} does not match booking total ₹${totalAmount}`,
+                `Payment amount ₹${dto.amount} does not match expected amount ₹${expectedAmount}` +
+                (discountAmount > 0 ? ` (₹${itemsTotal} - ₹${discountAmount} coupon discount)` : ''),
             );
         }
 
@@ -69,6 +74,8 @@ export class PaymentService {
             notes: {
                 bookingId: dto.bookingId,
                 userId,
+                ...(booking.couponCode && { couponCode: booking.couponCode }),
+                ...(discountAmount > 0 && { discountAmount: String(discountAmount) }),
                 ...(dto.notes && { notes: dto.notes }),
             },
         });
@@ -91,6 +98,12 @@ export class PaymentService {
             amount: Number(order.amount) / 100, // back to rupees for client
             currency: order.currency,
             key: this.config.get<string>('RAZORPAY_KEY_ID'),
+            ...(discountAmount > 0 && {
+                couponApplied: true,
+                couponCode: booking.couponCode,
+                discountAmount,
+                grossAmount: itemsTotal,
+            }),
         };
     }
 
@@ -181,6 +194,8 @@ export class PaymentService {
                     data: {
                         status: BookingStatus.CONFIRMED,
                         confirmedAt: new Date(),
+                        // Record the amount actually paid — used for accounting and refund calculations
+                        paidAmount: payment.amount,
                     },
                 }),
             ]);

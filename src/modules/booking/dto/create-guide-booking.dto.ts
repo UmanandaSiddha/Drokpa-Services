@@ -1,5 +1,5 @@
 // create-guide-booking.dto.ts
-import { IsDateString, IsInt, IsUUID, Min } from 'class-validator';
+import { IsDateString, IsInt, IsUUID, Min, IsOptional, IsString } from 'class-validator';
 
 export class CreateGuideBookingDto {
     @IsUUID()
@@ -14,4 +14,9 @@ export class CreateGuideBookingDto {
     @IsInt()
     @Min(1)
     quantity: number;
+
+    /** Optional promo / coupon code to apply at booking time */
+    @IsOptional()
+    @IsString()
+    couponCode?: string;
 }

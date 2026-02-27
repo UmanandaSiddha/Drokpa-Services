@@ -127,6 +127,24 @@ enum BucketListStatus {
     EXPIRED
 }
 
+// How the coupon discount is measured
+enum CouponType {
+    PERCENTAGE // e.g. 15% off total
+    FIXED_AMOUNT // e.g. ₹500 off total
+}
+
+// Controls who can discover / use the coupon
+enum CouponVisibility {
+    PUBLIC // Listed in promotions, anyone can apply by code
+    PRIVATE // Not listed; only explicitly assigned users/roles can use it
+}
+
+// What the discount applies to
+enum CouponApplyTo {
+    BOOKING_TOTAL // Discount on the entire booking amount
+    PER_PERSON // Discount multiplied by participant count (tours)
+}
+
 enum TourType {
     TOUR
     TREK
@@ -348,15 +366,17 @@ model User {
     createdAt               DateTime  @default(now()) @map("created_at")
     updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
 
-    provider       Provider?
-    roles          UserRoleMap[]
-    sessions       Session[]
-    authIdentities AuthIdentity[]
-    bookings       Booking[]
-    reviews        Review[]
-    memories       Memories[]
-    bucketLists    BucketList[]
-    documents      Document[]
+    provider          Provider?
+    roles             UserRoleMap[]
+    sessions          Session[]
+    authIdentities    AuthIdentity[]
+    bookings          Booking[]
+    reviews           Review[]
+    memories          Memories[]
+    bucketLists       BucketList[]
+    documents         Document[]
+    couponAssignments CouponUserAssignment[] // Private coupons issued to this user
+    couponUsages      CouponUsage[] // History of coupons redeemed by this user
 
     @@index([email, isVerified])
     @@index([isDisabled, isVerified])
@@ -772,6 +792,14 @@ model Booking {
     source             BookingSource @default(ONLINE)
     totalAmount        Int?
     paidAmount         Int?
+    // ─── Coupon / discount tracking ────────────────────────────────────────────
+    // couponId / couponCode are set when a valid coupon is applied at checkout.
+    // discountAmount is the concrete rupee value saved (computed in service layer).
+    // These are never cleared after application — they are an immutable audit trail.
+    couponId           String?
+    couponCode         String? // Denormalised snapshot of the code at time of use
+    discountAmount     Int           @default(0) // Rupee value discounted from totalAmount
+    // ───────────────────────────────────────────────────────────────────────────
     confirmedAt        DateTime?
     cancelledAt        DateTime?
     cancellationReason String?
@@ -782,6 +810,7 @@ model Booking {
     updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
 
     user    User          @relation(fields: [userId], references: [id])
+    coupon  Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
     reviews Review[]
     payment Payment[]
     items   BookingItem[]
@@ -789,6 +818,7 @@ model Booking {
     @@index([userId, status, createdAt(sort: Desc)])
     @@index([status, expiresAt])
     @@index([createdAt])
+    @@index([couponId])
 }
 
 // ─────────────────────────────────────────────
@@ -1094,4 +1124,134 @@ model Memories {
     updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
     user User @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Coupon
+//
+// DESIGN DECISIONS
+// ─────────────────────────────────────────────
+// • visibility=PUBLIC  → anyone with the code can apply it (subject to rules)
+// • visibility=PRIVATE → only users explicitly listed in CouponUserAssignment OR
+//   users whose role is in allowedRoles[] can apply it
+//
+// • allowedRoles: UserRole[]  — if non-empty, only these roles may redeem the coupon.
+//   Example: ["ADMIN"] makes it an internal QA/test coupon.
+//
+// • userAssignments → CouponUserAssignment[] — for "this coupon is only for you"
+//   type coupons (e.g., loyalty reward for a specific user).
+//   A PRIVATE coupon with userAssignments AND allowedRoles applies OR logic:
+//   the user must be in at least one of the two lists.
+//
+// • rules (Json) — flexible slot for extra business rules not worth their own
+//   columns. Examples:
+//     { "minParticipants": 10 }  — group discount (10+ people get 15% off)
+//     { "applicableProductTypes": ["TOUR_VENDOR"] } — only on tour bookings
+//     { "applicableProductIds": ["uuid1", "uuid2"] } — only on specific products
+//     { "firstTimeOnly": true }  — first booking only
+//     { "maxDiscountAmount": 2000 } — cap the final discount rupee value
+//
+// • maxUsesTotal: total across all users. null = unlimited.
+// • maxUsesPerUser: per-user cap. null = unlimited.
+// • currentUses: maintained by the service layer (increment on successful usage,
+//   decrement on booking cancellation if policy requires it).
+// ─────────────────────────────────────────────
+model Coupon {
+    id          String           @id @default(uuid())
+    code        String           @unique // Case-insensitive comparison enforced in service layer
+    description String?          @db.Text
+    type        CouponType
+    visibility  CouponVisibility
+    applyTo     CouponApplyTo    @default(BOOKING_TOTAL)
+
+    // Discount value — interpretation depends on `type`:
+    //   PERCENTAGE:   discountValue = 15  → 15% off
+    //   FIXED_AMOUNT: discountValue = 500 → ₹500 off
+    discountValue Int
+
+    // Optional cap on the final discount rupee value (e.g. "15% off, max ₹1000")
+    maxDiscountAmount Int?
+
+    // Eligibility guards
+    minOrderAmount Int? // Minimum booking totalAmount to apply coupon
+    validFrom      DateTime
+    validUntil     DateTime?
+    maxUsesTotal   Int? // null = unlimited across all users
+    maxUsesPerUser Int? // null = unlimited per user
+    currentUses    Int       @default(0)
+
+    // Role-based access: if non-empty, only users with at least one of these roles
+    // may use this coupon. An empty array = no role restriction.
+    allowedRoles UserRole[]
+
+    // Extra flexible rules (see model comment above for examples)
+    rules Json?
+
+    isActive  Boolean  @default(true)
+    createdBy String? // Admin userId who created this coupon
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+    userAssignments CouponUserAssignment[]
+    usages          CouponUsage[]
+    bookings        Booking[]
+
+    @@index([code])
+    @@index([visibility, isActive])
+    @@index([validFrom, validUntil])
+    @@index([isActive, currentUses])
+}
+
+// ─────────────────────────────────────────────
+// CouponUserAssignment
+//
+// Links a PRIVATE coupon (or any coupon) to specific users.
+// Used for:
+//   - Loyalty rewards: "This 15%-off code is just for you"
+//   - Group purchases: admin assigns a group coupon to all 10 members
+//   - One-time codes: a unique PRIVATE coupon assigned to exactly 1 user
+//
+// A user cannot have the same coupon assigned twice (@@unique).
+// ─────────────────────────────────────────────
+model CouponUserAssignment {
+    id        String   @id @default(uuid())
+    couponId  String
+    userId    String
+    // Optional: admin notes for why this user was assigned this coupon
+    note      String?  @db.Text
+    createdAt DateTime @default(now()) @map("created_at")
+
+    coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([couponId, userId])
+    @@index([userId])
+    @@index([couponId])
+}
+
+// ─────────────────────────────────────────────
+// CouponUsage
+//
+// Immutable ledger — one record per (coupon × booking) redemption.
+// Never deleted; cancellation logic is handled in the Booking flow.
+// @@unique([couponId, bookingId]) prevents double-counting.
+// @@unique([couponId, userId]) can be ADDED per-coupon if maxUsesPerUser=1
+// but is not enforced at DB level because maxUsesPerUser can be >1;
+// enforce the per-user cap in the service layer using a count query.
+// ─────────────────────────────────────────────
+model CouponUsage {
+    id             String   @id @default(uuid())
+    couponId       String
+    userId         String
+    bookingId      String   @unique // One usage record per booking
+    discountAmount Int // The concrete rupee value discounted on this booking
+    redeemedAt     DateTime @default(now())
+
+    coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+    user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+    @@unique([couponId, bookingId])
+    @@index([couponId])
+    @@index([userId])
+    @@index([bookingId])
 }

@@ -76,17 +76,6 @@ export class PayoutController {
     }
 
     /**
-     * Initiate payout — mark as processing when bank transfer is started.
-     * PATCH /payout/:id/processing
-     */
-    @Patch(':id/processing')
-    @UseGuards(RoleGuard)
-    @Roles(UserRole.ADMIN)
-    markProcessing(@Param('id') id: string) {
-        return this.payoutService.markProcessing(id);
-    }
-
-    /**
      * Confirm payout — mark as completed.
      * PATCH /payout/:id/complete
      */

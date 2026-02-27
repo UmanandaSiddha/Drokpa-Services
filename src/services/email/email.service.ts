@@ -197,7 +197,7 @@ export class EmailService {
                     <div class="content">
                         <p>Your One-Time Password is:</p>
                         <div class="otp">${otp}</div>
-                        <p>This OTP is valid for 10 minutes.</p>
+                        <p>This OTP is valid for 5 minutes.</p>
                         <p>If you didn't request this, please ignore this email.</p>
                     </div>
                     <div class="footer">

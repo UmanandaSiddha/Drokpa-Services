@@ -37,23 +37,35 @@ export class LoggerService extends ConsoleLogger {
 
     log(message: any, context?: string) {
         message = this.convertToString(message);
-        const entry = `${context}\t${message}`
-        this.logToFile(entry, 'LOG')
-        super.log(message, context)
+        const entry = `${context ?? this.context ?? ''}\t${message}`;
+        this.logToFile(entry, 'LOG');
+        if (context !== undefined) {
+            super.log(message, context);
+        } else {
+            super.log(message);
+        }
     }
 
     error(message: any, stackOrContext?: string) {
         message = this.convertToString(message);
-        const entry = `${stackOrContext}\t${message}`;
-        this.logToFile(entry, 'ERROR')
-        super.error(message, stackOrContext)
+        const entry = `${stackOrContext ?? this.context ?? ''}\t${message}`;
+        this.logToFile(entry, 'ERROR');
+        if (stackOrContext !== undefined) {
+            super.error(message, stackOrContext);
+        } else {
+            super.error(message);
+        }
     }
 
     warn(message: any, context?: string) {
         message = this.convertToString(message);
-        const entry = `${context}\t${message}`;
-        this.logToFile(entry, 'LOG')
-        super.warn(message, context)
+        const entry = `${context ?? this.context ?? ''}\t${message}`;
+        this.logToFile(entry, 'LOG');
+        if (context !== undefined) {
+            super.warn(message, context);
+        } else {
+            super.warn(message);
+        }
     }
 
     debug(message: any, context?: string) {

@@ -46,11 +46,11 @@ export class RazorpayService {
                 err?.error?.description ??
                 err?.message ??
                 `Razorpay ${operation} failed`;
-            this.logger.error(`[Razorpay] ${operation} failed`, {
+            this.logger.error(`[Razorpay] ${operation} failed`, JSON.stringify({
                 description,
                 code: err?.error?.code,
                 raw: err?.error,
-            });
+            }));
             throw new InternalServerErrorException(description);
         }
     }

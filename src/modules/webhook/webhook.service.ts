@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DatabaseService } from 'src/services/database/database.service';
+import { LoggerService } from 'src/services/logger/logger.service';
 import { WEBHOOK_QUEUE } from 'src/config/constants';
 import { Prisma } from 'generated/prisma/client';
 

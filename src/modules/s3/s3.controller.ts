@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, ParseEnumPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Post, UseGuards } from '@nestjs/common';
 import { S3Service } from './s3.service';
 import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
-import { FileInfo, UploadType, UploadUrlResponse } from './dto/s3.interface';
+import { UploadUrlResponse } from './dto/s3.interface';
 import { GetPresignedUrlsDto } from './dto/bulk.upload.dto';
 import { DeleteObjectDto } from './dto/delete.object.dto';
 import { GetPresignedUrlDto } from './dto/single.upload.dto';

@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
+import { EmailService } from 'src/services/email/email.service';
 import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
-import { ProviderStatus, PaymentStatus, UserRole, BookingStatus } from 'generated/prisma/enums';
+import { ProviderStatus, PaymentStatus, UserRole, BookingStatus, ProviderType } from 'generated/prisma/enums';
 import { AuthService } from '../auth/auth.service';
 import { Prisma } from 'generated/prisma/client';
 
@@ -10,6 +11,7 @@ export class AdminService {
     constructor(
         private readonly databaseService: DatabaseService,
         private readonly authService: AuthService,
+        private readonly emailService: EmailService,
     ) { }
 
     // ─────────────────────────────────────────
@@ -86,6 +88,124 @@ export class AdminService {
                 totalPages: Math.ceil(totalCount / limit),
             },
         };
+    }
+
+    // ─────────────────────────────────────────
+    // Tour Booking Admin Actions
+    // ─────────────────────────────────────────
+
+    /**
+     * Admin confirms a REQUESTED tour booking, transitioning it to AWAITING_PAYMENT.
+     * Tours are platform-managed — providers cannot do this step.
+     */
+    async confirmTourBooking(
+        bookingId: string,
+        paymentWindowMinutes: number = 30,
+    ) {
+        const booking = await this.databaseService.booking.findUnique({
+            where: { id: bookingId },
+            include: {
+                items: { select: { productType: true } },
+                user: { select: { email: true, firstName: true } },
+            },
+        });
+
+        if (!booking) throw new NotFoundException('Booking not found');
+        if (booking.status !== BookingStatus.REQUESTED) {
+            throw new BadRequestException(
+                `Booking cannot be confirmed from status: ${booking.status}`,
+            );
+        }
+
+        const isTourBooking = booking.items.some(
+            i => i.productType === ProviderType.TOUR_VENDOR,
+        );
+        if (!isTourBooking) {
+            throw new BadRequestException(
+                'This endpoint is only for tour bookings. Use the provider endpoint for other types.',
+            );
+        }
+
+        const expiresAt = new Date(Date.now() + paymentWindowMinutes * 60 * 1000);
+
+        const updatedBooking = await this.databaseService.booking.update({
+            where: { id: bookingId },
+            data: {
+                status: BookingStatus.AWAITING_PAYMENT,
+                confirmedAt: new Date(),
+                expiresAt,
+            },
+        });
+
+        // Notify user to complete payment
+        if (booking.user?.email) {
+            await this.emailService.queueEmail({
+                to: booking.user.email,
+                subject: 'Tour Booking Confirmed — Payment Required',
+                html: `
+                    <p>Dear ${booking.user.firstName},</p>
+                    <p>Your tour booking has been confirmed by our team. Please complete your payment within ${paymentWindowMinutes} minutes to secure your spot.</p>
+                    <p><strong>Booking ID:</strong> ${bookingId}</p>
+                    <p><strong>Payment deadline:</strong> ${expiresAt.toISOString()}</p>
+                `,
+            }).catch(() => { /* non-fatal */ });
+        }
+
+        return updatedBooking;
+    }
+
+    /**
+     * Admin rejects a REQUESTED tour booking.
+     */
+    async rejectTourBooking(bookingId: string, reason?: string) {
+        const booking = await this.databaseService.booking.findUnique({
+            where: { id: bookingId },
+            include: {
+                items: { select: { productType: true } },
+                user: { select: { email: true, firstName: true } },
+            },
+        });
+
+        if (!booking) throw new NotFoundException('Booking not found');
+        if (booking.status !== BookingStatus.REQUESTED) {
+            throw new BadRequestException(
+                `Booking cannot be rejected from status: ${booking.status}`,
+            );
+        }
+
+        const isTourBooking = booking.items.some(
+            i => i.productType === ProviderType.TOUR_VENDOR,
+        );
+        if (!isTourBooking) {
+            throw new BadRequestException(
+                'This endpoint is only for tour bookings.',
+            );
+        }
+
+        const updatedBooking = await this.databaseService.booking.update({
+            where: { id: bookingId },
+            data: {
+                status: BookingStatus.REJECTED,
+                cancellationReason: reason,
+                cancelledAt: new Date(),
+            },
+        });
+
+        if (booking.user?.email) {
+            await this.emailService.queueEmail({
+                to: booking.user.email,
+                subject: 'Tour Booking Rejected',
+                html: `
+                    <p>Dear ${booking.user.firstName},</p>
+                    <p>Unfortunately your tour booking request has been declined.</p>
+                    <p><strong>Booking ID:</strong> ${bookingId}</p>
+                    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+                    <p>Please feel free to explore other tour options on Drokpa.</p>
+                `,
+            }).catch(() => { /* non-fatal */ });
+        }
+
+        return updatedBooking;
     }
 
     // ─────────────────────────────────────────
@@ -277,5 +397,46 @@ export class AdminService {
         });
 
         return adminUsers.map(u => u.email).filter(Boolean);
+    }
+
+    // ─────────────────────────────────────────
+    // CancellationPolicy CRUD
+    // ─────────────────────────────────────────
+
+    async createCancellationPolicy(data: {
+        productType: string;
+        productId: string;
+        hoursBefore: number;
+        refundPct: number;
+    }) {
+        return this.databaseService.cancellationPolicy.create({ data: data as any });
+    }
+
+    async getCancellationPolicies(productId?: string) {
+        return this.databaseService.cancellationPolicy.findMany({
+            where: productId ? { productId } : undefined,
+            orderBy: { hoursBefore: 'asc' },
+        });
+    }
+
+    async updateCancellationPolicy(
+        id: string,
+        data: Partial<{
+            hoursBefore: number;
+            refundPct: number;
+        }>,
+    ) {
+        const policy = await this.databaseService.cancellationPolicy.findUnique({ where: { id } });
+        if (!policy) throw new NotFoundException('Cancellation policy not found');
+
+        return this.databaseService.cancellationPolicy.update({ where: { id }, data });
+    }
+
+    async deleteCancellationPolicy(id: string) {
+        const policy = await this.databaseService.cancellationPolicy.findUnique({ where: { id } });
+        if (!policy) throw new NotFoundException('Cancellation policy not found');
+
+        await this.databaseService.cancellationPolicy.delete({ where: { id } });
+        return { message: 'Cancellation policy deleted successfully' };
     }
 }

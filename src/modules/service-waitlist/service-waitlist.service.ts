@@ -116,13 +116,18 @@ export class ServiceWaitlistService {
         let notified = 0;
         for (const entry of waitlist) {
             try {
-                // TODO: Implement email sending when email service method is ready
-                // await this.emailService.sendWaitlistNotification(entry.email, {
-                //     name: entry.name,
-                //     serviceType,
-                // });
+                await this.emailService.queueEmail({
+                    to: entry.email,
+                    subject: `Great news — ${serviceType.replace('_', ' ')} services are now available on Drokpa!`,
+                    html: `
+                        <p>Dear ${entry.name ?? 'Valued Member'},</p>
+                        <p>We're excited to let you know that <strong>${serviceType.replace('_', ' ')}</strong> services are now available on Drokpa in your area${entry.location ? ` (${entry.location})` : ''}.</p>
+                        <p>Log in to the Drokpa platform to explore and book now.</p>
+                        <p>Thank you for your patience while we expanded our services!</p>
+                    `,
+                });
 
-                // Mark as notified
+                // Mark as notified only after email is queued successfully
                 await this.databaseService.serviceWaitlist.update({
                     where: { id: entry.id },
                     data: {

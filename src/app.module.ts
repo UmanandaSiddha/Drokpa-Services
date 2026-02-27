@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
@@ -35,12 +36,18 @@ import { RoomAvailabilityModule } from './modules/room-availibility/room-availib
 import { FirebaseAdminModule } from './services/firebase/firebase-admin.module';
 import { ServiceWaitlistModule } from './modules/service-waitlist/service-waitlist.module';
 import { CommunityModule } from './modules/community/community.module';
+import { CouponModule } from './modules/coupon/coupon.module';
+import { Module } from '@nestjs/common';
 
 @Module({
 	imports: [
 		ConfigModule.forRoot({
 			isGlobal: true,
 		}),
+		ThrottlerModule.forRoot([{
+			ttl: 60000,
+			limit: 60,
+		}]),
 		EventEmitterModule.forRoot(),
 		ScheduleModule.forRoot(),
 		SchedulerModule,
@@ -74,8 +81,15 @@ import { CommunityModule } from './modules/community/community.module';
 		HomestayModule,
 		ServiceWaitlistModule,
 		CommunityModule,
+		CouponModule,
 	],
 	controllers: [AppController],
-	providers: [AppService],
+	providers: [
+		AppService,
+		{
+			provide: APP_GUARD,
+			useClass: ThrottlerGuard,
+		},
+	],
 })
 export class AppModule { }

@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsUUID, Min } from 'class-validator';
+import { IsDateString, IsInt, IsUUID, Min, IsOptional, IsString } from 'class-validator';
 
 export class CreateVehicleBookingDto {
     @IsUUID()
@@ -13,4 +13,9 @@ export class CreateVehicleBookingDto {
     @IsInt()
     @Min(1)
     quantity: number;
+
+    /** Optional promo / coupon code to apply at booking time */
+    @IsOptional()
+    @IsString()
+    couponCode?: string;
 }

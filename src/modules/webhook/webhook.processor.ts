@@ -135,7 +135,11 @@ export class WebhookProcessor extends WorkerHost {
             }),
             this.databaseService.booking.update({
                 where: { id: payment.bookingId },
-                data: { status: BookingStatus.CONFIRMED },
+                data: {
+                    status: BookingStatus.CONFIRMED,
+                    // Record the amount paid — keeps paidAmount in sync via webhook path too
+                    paidAmount: payment.amount,
+                },
             }),
         ]);
 

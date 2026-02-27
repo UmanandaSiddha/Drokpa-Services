@@ -9,6 +9,7 @@ import {
 	Res,
 	UseGuards,
 } from '@nestjs/common';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
 	OtpDto,
@@ -25,14 +26,16 @@ import { GoogleAuthDto } from './dto/google-auth.dto';
 export class AuthController {
 	constructor(private readonly authService: AuthService) { }
 
-	// REQUEST-OTP
+	// REQUEST-OTP — strict: 5 req / 60s
 	@Post('request-otp')
+	@Throttle({ default: { ttl: 60000, limit: 5 } })
 	requestOtp(@Body() dto: RequestDto) {
 		return this.authService.requestOtp(dto);
 	}
 
-	// SIGN-UP
+	// SIGN-UP — strict: 5 req / 60s
 	@Post('sign-up')
+	@Throttle({ default: { ttl: 60000, limit: 5 } })
 	signUp(@Body() dto: SignUpDto, @Res({ passthrough: true }) res: Response) {
 		return this.authService.signUp(dto, res);
 	}
@@ -43,39 +46,45 @@ export class AuthController {
 		return this.authService.refreshToken(req, res);
 	}
 
-	// VERIFY-OTP
+	// VERIFY-OTP — strict: 5 req / 60s
 	@Post('verify-otp')
+	@Throttle({ default: { ttl: 60000, limit: 5 } })
 	verifyOtp(@Body() dto: OtpDto, @Res({ passthrough: true }) res: Response) {
 		return this.authService.verifyOtp(dto, res);
 	}
 
-	// SIGN-IN
+	// SIGN-IN — moderate: 10 req / 60s
 	@Post('sign-in')
+	@Throttle({ default: { ttl: 60000, limit: 10 } })
 	signIn(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
 		return this.authService.signIn(dto, res);
 	}
 
-	// LOGOUT
+	// LOGOUT — no throttle needed (requires auth)
 	@UseGuards(AuthGuard)
 	@Post('logout')
+	@SkipThrottle()
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @getUser('id') userId: string) {
 		return this.authService.logout(req, res, userId);
 	}
 
-	// REQUEST PASSWORD RESET
+	// REQUEST PASSWORD RESET — very strict: 3 req / 60s
 	@Post('forgot-password')
+	@Throttle({ default: { ttl: 60000, limit: 3 } })
 	requestPasswordReset(@Body() dto: RequestDto) {
 		return this.authService.requestPasswordReset(dto);
 	}
 
-	// RESET PASSWORD
+	// RESET PASSWORD — strict: 5 req / 60s
 	@Post('reset-password')
+	@Throttle({ default: { ttl: 60000, limit: 5 } })
 	resetPassword(@Body() dto: ResetPasswordDto) {
 		return this.authService.resetPassword(dto);
 	}
 
-	// GOOGLE AUTH
+	// GOOGLE AUTH — moderate: 10 req / 60s
 	@Post('google')
+	@Throttle({ default: { ttl: 60000, limit: 10 } })
 	async googleAuth(
 		@Body() dto: GoogleAuthDto,
 		@Res({ passthrough: true }) res: Response,

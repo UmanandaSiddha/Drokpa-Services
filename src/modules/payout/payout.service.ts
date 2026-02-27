@@ -94,36 +94,6 @@ export class PayoutService {
     }
 
     // ─────────────────────────────────────────
-    // Mark payout as processing (Admin)
-    // When admin initiates bank transfer
-    // ─────────────────────────────────────────
-
-    async markProcessing(payoutId: string) {
-        const payout = await this.databaseService.providerPayout.findUnique({
-            where: { id: payoutId },
-            select: { id: true, status: true },
-        });
-        if (!payout) throw new NotFoundException('Payout not found');
-
-        if (payout.status !== PayoutStatus.PENDING) {
-            throw new BadRequestException(
-                `Cannot mark as processing from status: ${payout.status}`,
-            );
-        }
-
-        // Since PayoutStatus enum only has PENDING, PAID, FAILED,
-        // we keep it as PENDING until it's actually PAID.
-        // This is a placeholder for future workflow states.
-        // For now, just update the timestamp.
-        return this.databaseService.providerPayout.update({
-            where: { id: payoutId },
-            data: {
-                updatedAt: new Date(),
-            },
-        });
-    }
-
-    // ─────────────────────────────────────────
     // Mark payout as completed (Admin)
     // After bank transfer confirmed
     // ─────────────────────────────────────────
@@ -315,9 +285,16 @@ export class PayoutService {
         });
         if (!payout) throw new NotFoundException('Payout not found');
 
-        // If requestingUserId provided, verify they own the provider
-        // For now, we trust the controller to enforce admin-only access
-        // A full implementation would look up the user's provider and compare
+        // If requestingUserId provided (non-admin caller), verify they own the provider
+        if (requestingUserId) {
+            const userProvider = await this.databaseService.provider.findUnique({
+                where: { userId: requestingUserId },
+                select: { id: true },
+            });
+            if (!userProvider || userProvider.id !== payout.providerId) {
+                throw new ForbiddenException('You do not have access to this payout');
+            }
+        }
 
         return payout;
     }
