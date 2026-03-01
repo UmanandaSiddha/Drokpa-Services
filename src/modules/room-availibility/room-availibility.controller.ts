@@ -15,22 +15,25 @@ import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 export class RoomAvailabilityController {
     constructor(private readonly roomAvailabilityService: RoomAvailabilityService) { }
 
-    // ── Provider endpoints ────────────────────
+    // ── Provider + Admin write endpoints ─────────
 
     /**
      * Set availability for a date range.
      * Upserts — safe to call multiple times to adjust counts or prices.
      * POST /room-availability/:roomId
+     * Admin: no onBehalfOf needed — ownership check skipped entirely.
      */
     @Post(':roomId')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
+    @Roles(UserRole.HOST, UserRole.ADMIN)
     setAvailability(
         @Param('roomId') roomId: string,
         @Body() dto: SetAvailabilityDto,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.roomAvailabilityService.setAvailability(roomId, providerId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.roomAvailabilityService.setAvailability(roomId, providerId, dto, isAdmin);
     }
 
     /**
@@ -39,13 +42,15 @@ export class RoomAvailabilityController {
      */
     @Patch(':roomId/date')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
+    @Roles(UserRole.HOST, UserRole.ADMIN)
     updateSingleDate(
         @Param('roomId') roomId: string,
         @Body() dto: UpdateAvailabilityDto,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.roomAvailabilityService.updateSingleDate(roomId, providerId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.roomAvailabilityService.updateSingleDate(roomId, providerId, dto, isAdmin);
     }
 
     /**
@@ -55,13 +60,15 @@ export class RoomAvailabilityController {
      */
     @Post(':roomId/block')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
+    @Roles(UserRole.HOST, UserRole.ADMIN)
     blockDates(
         @Param('roomId') roomId: string,
         @Body() dto: Omit<SetAvailabilityDto, 'available'>,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.roomAvailabilityService.blockDates(roomId, providerId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.roomAvailabilityService.blockDates(roomId, providerId, dto, isAdmin);
     }
 
     /**
@@ -71,21 +78,24 @@ export class RoomAvailabilityController {
      */
     @Delete(':roomId')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
+    @Roles(UserRole.HOST, UserRole.ADMIN)
     deleteAvailabilityRange(
         @Param('roomId') roomId: string,
         @Query('startDate') startDate: string,
         @Query('endDate') endDate: string,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
         if (!startDate || !endDate) {
             throw new BadRequestException('startDate and endDate are required');
         }
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
         return this.roomAvailabilityService.deleteAvailabilityRange(
             roomId,
             providerId,
             startDate,
             endDate,
+            isAdmin,
         );
     }
 
@@ -96,23 +106,27 @@ export class RoomAvailabilityController {
      */
     @Get('homestay/:homestayId')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.HOST)
+    @Roles(UserRole.HOST, UserRole.ADMIN)
     getHomestayAvailabilitySummary(
         @Param('homestayId') homestayId: string,
         @Query('startDate') startDate: string,
         @Query('endDate') endDate: string,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
         if (!startDate || !endDate) {
             throw new BadRequestException('startDate and endDate are required');
         }
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
         return this.roomAvailabilityService.getHomestayAvailabilitySummary(
             homestayId,
             providerId,
             startDate,
             endDate,
+            isAdmin,
         );
     }
+
 
     // ── Public endpoints ──────────────────────
 

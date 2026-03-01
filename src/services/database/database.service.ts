@@ -13,7 +13,7 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
 
 		super({
 			adapter,
-			log: ['query', 'info', 'warn', 'error'],
+			log: [/* 'query', */ 'info', 'warn', 'error'],
 		});
 	}
 

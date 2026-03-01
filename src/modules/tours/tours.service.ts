@@ -5,6 +5,7 @@ import { AddItineraryDto } from "./dto/add-itinerary.dto";
 import { Prisma } from "generated/prisma/client";
 import { PrismaApiFeatures, QueryString } from "src/utils/apiFeatures";
 import { TOUR_DETAIL_INCLUDE, TOUR_LIST_INCLUDE } from "src/utils/tour.helper";
+import { generateSlug, generateUniqueSlugFromText } from "src/utils/slug.helper";
 
 @Injectable()
 export class ToursService {
@@ -66,12 +67,24 @@ export class ToursService {
         }
 
         const basePrice = dto.price;
-        const discount = 0;
+        const discount = dto.discount ?? 0;
         const finalPrice = this.computeFinalPrice(basePrice, discount);
+
+        // Generate unique slug from title
+        const slug = await generateUniqueSlugFromText(
+            dto.title,
+            async (candidate) => {
+                const existing = await this.databaseService.tour.findUnique({
+                    where: { slug: candidate },
+                });
+                return !!existing;
+            },
+        );
 
         return this.databaseService.tour.create({
             data: {
                 title: dto.title,
+                slug,
                 description: dto.description,
                 type: dto.type,
                 basePrice,
@@ -81,6 +94,8 @@ export class ToursService {
                 imageUrls: dto.imageUrls ?? [],
                 maxCapacity: dto.maxCapacity ?? 10,
                 addressId: dto.addressId,
+                providerId: dto.providerId,
+                guideId: dto.guideId,
                 about: dto.about,
                 included: dto.included ?? [],
                 notIncluded: dto.notIncluded ?? [],
@@ -155,6 +170,26 @@ export class ToursService {
     }
 
     // ─────────────────────────────────────────
+    // Get by Slug (SEO-friendly URL)
+    // ─────────────────────────────────────────
+
+    async getTourBySlug(slug: string) {
+        const tour = await this.databaseService.tour.findUnique({
+            where: { slug },
+            include: TOUR_DETAIL_INCLUDE,
+        });
+
+        if (!tour) throw new NotFoundException('Tour not found');
+
+        const bookedCount = await this.getBookedCount(tour.id);
+
+        return {
+            ...tour,
+            availableSpots: Math.max(0, tour.maxCapacity - bookedCount),
+        };
+    }
+
+    // ─────────────────────────────────────────
     // Update
     // ─────────────────────────────────────────
 
@@ -174,9 +209,25 @@ export class ToursService {
         const shouldRecomputeFinal =
             dto.price !== undefined || dto.discount !== undefined;
 
+        // Regenerate slug if title changes
+        let slug = tour.slug;
+        if (dto.title && dto.title !== tour.title) {
+            slug = await generateUniqueSlugFromText(
+                dto.title,
+                async (candidate) => {
+                    const existing = await this.databaseService.tour.findUnique({
+                        where: { slug: candidate },
+                    });
+                    // Allow the current tour's slug to match itself
+                    return !!existing && existing.id !== id;
+                },
+            );
+        }
+
         // Use Prisma.TourUpdateInput — no manual type maintenance needed
         const data: Prisma.TourUpdateInput = {
             ...(dto.title !== undefined && { title: dto.title }),
+            ...(dto.title !== undefined && { slug }),
             ...(dto.description !== undefined && { description: dto.description }),
             ...(dto.type !== undefined && { type: dto.type }),
             ...(dto.duration !== undefined && { duration: dto.duration }),
@@ -256,6 +307,68 @@ export class ToursService {
         }
     }
 
+    async getTourItinerary(tourId: string) {
+        const tour = await this.databaseService.tour.findUnique({ where: { id: tourId } });
+        if (!tour) throw new NotFoundException('Tour not found');
+
+        return this.databaseService.tourItinerary.findMany({
+            where: { tourId },
+            include: {
+                pois: {
+                    include: { poi: true },
+                    orderBy: { order: 'asc' },
+                },
+            },
+            orderBy: { dayNumber: 'asc' },
+        });
+    }
+
+    async updateItineraryDay(
+        tourId: string,
+        dayNumber: number,
+        dto: Partial<AddItineraryDto>,
+    ) {
+        const itinerary = await this.databaseService.tourItinerary.findUnique({
+            where: { tourId_dayNumber: { tourId, dayNumber } },
+        });
+
+        if (!itinerary) {
+            throw new NotFoundException(
+                `Itinerary day ${dayNumber} not found for this tour`,
+            );
+        }
+
+        return this.databaseService.tourItinerary.update({
+            where: { id: itinerary.id },
+            data: {
+                ...(dto.title !== undefined && { title: dto.title }),
+                ...(dto.details !== undefined && { details: dto.details }),
+            },
+            include: {
+                pois: {
+                    include: { poi: true },
+                    orderBy: { order: 'asc' },
+                },
+            },
+        });
+    }
+
+    async deleteItineraryDay(tourId: string, dayNumber: number) {
+        const itinerary = await this.databaseService.tourItinerary.findUnique({
+            where: { tourId_dayNumber: { tourId, dayNumber } },
+        });
+
+        if (!itinerary) {
+            throw new NotFoundException(
+                `Itinerary day ${dayNumber} not found for this tour`,
+            );
+        }
+
+        return this.databaseService.tourItinerary.delete({
+            where: { id: itinerary.id },
+        });
+    }
+
     async addPoiToItinerary(itineraryId: string, poiId: string, order: number) {
         // Parallel existence checks — no need to run sequentially
         const [itinerary, poi] = await Promise.all([
@@ -314,6 +427,20 @@ export class ToursService {
                 }),
             ),
         );
+    }
+
+    async removePOIFromItinerary(itineraryId: string, poiId: string) {
+        const entry = await this.databaseService.tourItineraryPOI.findFirst({
+            where: { itineraryId, poiId },
+        });
+
+        if (!entry) {
+            throw new NotFoundException('POI not found in this itinerary');
+        }
+
+        return this.databaseService.tourItineraryPOI.delete({
+            where: { id: entry.id },
+        });
     }
 
     // ─────────────────────────────────────────

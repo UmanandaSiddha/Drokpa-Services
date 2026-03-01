@@ -44,6 +44,14 @@ export class CreateTourDto {
 
     @IsOptional()
     @IsString()
+    providerId?: string;
+
+    @IsOptional()
+    @IsString()
+    guideId?: string;
+
+    @IsOptional()
+    @IsString()
     about?: string;
 
     @IsArray()
@@ -68,4 +76,9 @@ export class CreateTourDto {
     @IsOptional()
     @IsBoolean()
     isActive?: boolean;
+
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    discount?: number;
 }

@@ -60,8 +60,9 @@ export class RoomAvailabilityService {
         roomId: string,
         providerId: string,
         dto: SetAvailabilityDto,
+        skipOwnershipCheck = false,
     ) {
-        await this.assertRoomOwnership(roomId, providerId);
+        if (!skipOwnershipCheck) await this.assertRoomOwnership(roomId, providerId);
 
         const startDate = new Date(dto.startDate);
         const endDate = new Date(dto.endDate);
@@ -112,8 +113,9 @@ export class RoomAvailabilityService {
         roomId: string,
         providerId: string,
         dto: UpdateAvailabilityDto,
+        skipOwnershipCheck = false,
     ) {
-        await this.assertRoomOwnership(roomId, providerId);
+        if (!skipOwnershipCheck) await this.assertRoomOwnership(roomId, providerId);
 
         const date = new Date(dto.date);
         date.setHours(0, 0, 0, 0);
@@ -187,11 +189,12 @@ export class RoomAvailabilityService {
         roomId: string,
         providerId: string,
         dto: Omit<SetAvailabilityDto, 'available'>,
+        skipOwnershipCheck = false,
     ) {
         return this.setAvailability(roomId, providerId, {
             ...dto,
             available: 0,
-        });
+        }, skipOwnershipCheck);
     }
 
     // ─────────────────────────────────────────
@@ -204,8 +207,9 @@ export class RoomAvailabilityService {
         providerId: string,
         startDate: string,
         endDate: string,
+        skipOwnershipCheck = false,
     ) {
-        await this.assertRoomOwnership(roomId, providerId);
+        if (!skipOwnershipCheck) await this.assertRoomOwnership(roomId, providerId);
 
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -237,13 +241,14 @@ export class RoomAvailabilityService {
         providerId: string,
         startDate: string,
         endDate: string,
+        skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
             where: { id: homestayId },
             select: { id: true, providerId: true, rooms: { select: { id: true, name: true } } },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (homestay.providerId !== providerId) {
+        if (!skipOwnershipCheck && homestay.providerId !== providerId) {
             throw new ForbiddenException('You do not have permission to view this homestay');
         }
 

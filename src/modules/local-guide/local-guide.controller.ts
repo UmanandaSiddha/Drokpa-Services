@@ -16,12 +16,19 @@ export class LocalGuideController {
 
     @Post()
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.GUIDE)
+    @Roles(UserRole.GUIDE, UserRole.ADMIN)
     createGuide(
         @Body() dto: CreateLocalGuideDto,
         @getUser('id') userId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
+        @Query('onBehalfOf') onBehalfOf?: string,
     ) {
-        return this.localGuideService.createGuide(userId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        if (isAdmin && !onBehalfOf) {
+            throw new BadRequestException('Admin must supply ?onBehalfOf=<guideUserId> to create a guide on behalf of a provider');
+        }
+        const effectiveUserId = isAdmin ? onBehalfOf! : userId;
+        return this.localGuideService.createGuide(effectiveUserId, dto);
     }
 
     @Get()
@@ -60,22 +67,26 @@ export class LocalGuideController {
 
     @Patch(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.GUIDE)
+    @Roles(UserRole.GUIDE, UserRole.ADMIN)
     updateGuide(
         @Param('id') id: string,
         @Body() dto: Partial<CreateLocalGuideDto>,
         @getUser('id') userId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.localGuideService.updateGuide(id, userId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.localGuideService.updateGuide(id, userId, dto, isAdmin);
     }
 
     @Delete(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.GUIDE)
+    @Roles(UserRole.GUIDE, UserRole.ADMIN)
     deleteGuide(
         @Param('id') id: string,
         @getUser('id') userId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.localGuideService.deleteGuide(id, userId);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.localGuideService.deleteGuide(id, userId, isAdmin);
     }
 }

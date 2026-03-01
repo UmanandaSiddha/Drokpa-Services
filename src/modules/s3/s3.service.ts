@@ -4,7 +4,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as path from 'path';
-import { FileInfo, UploadType, UploadUrlResponse } from './dto/s3.interface';
+import { FileInfo, UploadType, UploadUrlResponse, PUBLIC_UPLOAD_TYPES } from './dto/s3.interface';
 import { ALLOWED_MIME_TYPES } from 'src/utils/s3.helper';
 import { DatabaseService } from 'src/services/database/database.service';
 import { LoggerService } from 'src/services/logger/logger.service';
@@ -166,8 +166,10 @@ export class S3Service {
 
     /**
      * Private helper to generate a standardized, unique key for S3.
-     * Format: {uploadType}/{contextId}/{uuid}.{extension}
-     * Example: menu-items/outlet-123/abc-123-def-456.jpg
+     * Format: {public|private}/{uploadType}/{contextId}/{uuid}.{extension}
+     * Examples:
+     *   - public/tours/tour-123/abc-123-def-456.jpg
+     *   - private/permit-documents/user-123/xyz-789.pdf
      */
     private _generateS3Key(uploadType: UploadType, contextId: string, originalFileName: string): string {
         const safeContextId = contextId.replace(/[^a-zA-Z0-9\-_]/g, '');
@@ -176,7 +178,11 @@ export class S3Service {
             throw new BadRequestException('File must have an extension');
         }
         const uniqueId = crypto.randomUUID();
-        return `${uploadType}/${safeContextId}/${uniqueId}${fileExtension}`;
+
+        // Determine if this upload type goes to public or private folder
+        const folder = PUBLIC_UPLOAD_TYPES.includes(uploadType) ? 'public' : 'private';
+
+        return `${folder}/${uploadType}/${safeContextId}/${uniqueId}${fileExtension}`;
     }
 
     /**

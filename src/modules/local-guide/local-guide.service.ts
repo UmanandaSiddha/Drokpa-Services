@@ -76,11 +76,22 @@ export class LocalGuideService {
             queryStr,
         )
             .where({ isActive: true })
-            .search(['bio'])
             .filter()
             .sort({ rating: 'desc' } as Prisma.LocalGuideOrderByWithRelationInput)
             .include(GUIDE_INCLUDE)
             .pagination(20);
+
+        // Custom search for bio and provider name
+        const keyword = queryStr.keyword;
+        if (keyword) {
+            const searchCondition = {
+                OR: [
+                    { bio: { contains: keyword, mode: 'insensitive' as Prisma.QueryMode } },
+                    { provider: { name: { contains: keyword, mode: 'insensitive' as Prisma.QueryMode } } },
+                ],
+            };
+            features.where(searchCondition as any);
+        }
 
         const { results, totalCount } = await features.execute();
         const page = Number(queryStr.page) || 1;
@@ -128,15 +139,15 @@ export class LocalGuideService {
     // Update
     // ─────────────────────────────────────────
 
-    async updateGuide(id: string, userId: string, dto: Partial<CreateLocalGuideDto>) {
-        const provider = await this.resolveProvider(userId);
+    async updateGuide(id: string, userId: string, dto: Partial<CreateLocalGuideDto>, skipOwnershipCheck = false) {
+        const provider = skipOwnershipCheck ? null : await this.resolveProvider(userId);
 
         const guide = await this.databaseService.localGuide.findUnique({
             where: { id },
             select: { id: true, providerId: true },
         });
         if (!guide) throw new NotFoundException('Guide not found');
-        if (guide.providerId !== provider.id) {
+        if (!skipOwnershipCheck && guide.providerId !== provider!.id) {
             throw new ForbiddenException('You do not have permission to update this guide');
         }
 
@@ -167,15 +178,15 @@ export class LocalGuideService {
     // Delete (soft preferred — checks active bookings)
     // ─────────────────────────────────────────
 
-    async deleteGuide(id: string, userId: string) {
-        const provider = await this.resolveProvider(userId);
+    async deleteGuide(id: string, userId: string, skipOwnershipCheck = false) {
+        const provider = skipOwnershipCheck ? null : await this.resolveProvider(userId);
 
         const guide = await this.databaseService.localGuide.findUnique({
             where: { id },
             select: { id: true, providerId: true },
         });
         if (!guide) throw new NotFoundException('Guide not found');
-        if (guide.providerId !== provider.id) {
+        if (!skipOwnershipCheck && guide.providerId !== provider!.id) {
             throw new ForbiddenException('You do not have permission to delete this guide');
         }
 

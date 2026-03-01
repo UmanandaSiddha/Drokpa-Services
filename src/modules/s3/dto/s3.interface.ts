@@ -21,3 +21,23 @@ export enum UploadType {
     POI = 'poi',
     REVIEW = 'reviews',
 }
+
+/**
+ * Determines which upload types go to public vs private folders
+ */
+export const PUBLIC_UPLOAD_TYPES: UploadType[] = [
+    UploadType.AVATAR,
+    UploadType.TOUR,
+    UploadType.HOMESTAY,
+    UploadType.ROOM,
+    UploadType.VEHICLE,
+    UploadType.GUIDE,
+    UploadType.POI,
+    UploadType.REVIEW,
+];
+
+export const PRIVATE_UPLOAD_TYPES: UploadType[] = [
+    UploadType.PERMIT_DOCUMENT,
+    UploadType.IDENTITY_PROOF,
+    UploadType.PASSPORT_PHOTO,
+];

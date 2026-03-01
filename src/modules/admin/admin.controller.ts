@@ -142,4 +142,49 @@ export class AdminController {
     deleteCancellationPolicy(@Param('id') id: string) {
         return this.adminService.deleteCancellationPolicy(id);
     }
+
+    // ─────────────────────────────────────────
+    // Assign Role to User
+    // ─────────────────────────────────────────
+
+    /**
+     * Assign HOST, VENDOR, or GUIDE role to a user.
+     * Also creates (or updates) their Provider record with the matching provider types.
+     * PATCH /admin/user/:id/assign-role
+     */
+    @Patch('user/:id/assign-role')
+    assignRole(
+        @Param('id') userId: string,
+        @Body() body: { role: UserRole; providerTypes?: string[] },
+    ) {
+        return this.adminService.assignRole(userId, body.role, body.providerTypes as any);
+    }
+
+    // ─────────────────────────────────────────
+    // Complete Booking
+    // ─────────────────────────────────────────
+
+    /**
+     * Manually transition a CONFIRMED booking to COMPLETED.
+     * Required step before creating a payout for any booking item.
+     * PATCH /admin/bookings/:id/complete
+     */
+    @Patch('bookings/:id/complete')
+    completeBooking(@Param('id') bookingId: string) {
+        return this.adminService.completeBooking(bookingId);
+    }
+
+    // ─────────────────────────────────────────
+    // Delete Any Review
+    // ─────────────────────────────────────────
+
+    /**
+     * Force-delete any review regardless of author.
+     * Re-aggregates the product's average rating and totalReviews after deletion.
+     * DELETE /admin/review/:id
+     */
+    @Delete('review/:id')
+    deleteReview(@Param('id') reviewId: string) {
+        return this.adminService.deleteReview(reviewId);
+    }
 }

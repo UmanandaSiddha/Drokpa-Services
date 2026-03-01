@@ -1,12 +1,39 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateAddressDto } from './dto/create-address.dto';
+import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
+import { Prisma } from 'generated/prisma/client';
 
 @Injectable()
 export class AddressService {
     constructor(
         private readonly databaseService: DatabaseService,
     ) { }
+
+    async getAllAddresses(queryStr: QueryString) {
+        const features = new PrismaApiFeatures(
+            this.databaseService.address,
+            queryStr,
+        )
+            .search(['city', 'state', 'street', 'postalCode', 'country'])
+            .filter()
+            .sort({ createdAt: 'desc' } as Prisma.AddressOrderByWithRelationInput)
+            .pagination(20);
+
+        const { results, totalCount } = await features.execute();
+        const page = Number(queryStr.page) || 1;
+        const limit = Number(queryStr.limit) || 20;
+
+        return {
+            data: results,
+            meta: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit),
+            },
+        };
+    }
 
     async createAddress(dto: CreateAddressDto) {
         return this.databaseService.$transaction(async (tx) => {

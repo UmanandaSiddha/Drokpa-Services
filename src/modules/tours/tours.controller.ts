@@ -28,6 +28,11 @@ export class ToursController {
         return this.toursService.listActiveTours(query);
     }
 
+    @Get('slug/:slug')
+    getTourBySlug(@Param('slug') slug: string) {
+        return this.toursService.getTourBySlug(slug);
+    }
+
     @Get(':id')
     getTourById(@Param('id') id: string) {
         return this.toursService.getTourById(id);
@@ -54,6 +59,32 @@ export class ToursController {
         return this.toursService.addTourItineraryDay(id, dto);
     }
 
+    @Get(':id/itinerary')
+    getTourItinerary(@Param('id') id: string) {
+        return this.toursService.getTourItinerary(id);
+    }
+
+    @Patch(':id/itinerary/:dayNumber')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    updateItineraryDay(
+        @Param('id') id: string,
+        @Param('dayNumber', ParseIntPipe) dayNumber: number,
+        @Body() dto: Partial<AddItineraryDto>,
+    ) {
+        return this.toursService.updateItineraryDay(id, dayNumber, dto);
+    }
+
+    @Delete(':id/itinerary/:dayNumber')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    deleteItineraryDay(
+        @Param('id') id: string,
+        @Param('dayNumber', ParseIntPipe) dayNumber: number,
+    ) {
+        return this.toursService.deleteItineraryDay(id, dayNumber);
+    }
+
     @Post('itinerary/:itineraryId/poi/:poiId')
     @UseGuards(AuthGuard, RoleGuard)
     @Roles(UserRole.ADMIN)
@@ -73,5 +104,15 @@ export class ToursController {
         @Body('poiIds') poiIds: string[],
     ) {
         return this.toursService.reorderItineraryPois(itineraryId, poiIds);
+    }
+
+    @Delete('itinerary/:itineraryId/poi/:poiId')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    removePOIFromItinerary(
+        @Param('itineraryId') itineraryId: string,
+        @Param('poiId') poiId: string,
+    ) {
+        return this.toursService.removePOIFromItinerary(itineraryId, poiId);
     }
 }

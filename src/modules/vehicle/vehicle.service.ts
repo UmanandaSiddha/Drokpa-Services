@@ -131,13 +131,13 @@ export class VehicleService {
     // Update
     // ─────────────────────────────────────────
 
-    async updateVehicle(id: string, providerId: string, dto: Partial<CreateVehicleDto>) {
+    async updateVehicle(id: string, providerId: string, dto: Partial<CreateVehicleDto>, skipOwnershipCheck = false) {
         const vehicle = await this.databaseService.vehicle.findUnique({
             where: { id },
             select: { id: true, providerId: true },
         });
         if (!vehicle) throw new NotFoundException('Vehicle not found');
-        if (vehicle.providerId !== providerId) {
+        if (!skipOwnershipCheck && vehicle.providerId !== providerId) {
             throw new ForbiddenException('You do not have permission to update this vehicle');
         }
 
@@ -183,13 +183,13 @@ export class VehicleService {
     // Delete
     // ─────────────────────────────────────────
 
-    async deleteVehicle(id: string, providerId: string) {
+    async deleteVehicle(id: string, providerId: string, skipOwnershipCheck = false) {
         const vehicle = await this.databaseService.vehicle.findUnique({
             where: { id },
             select: { id: true, providerId: true },
         });
         if (!vehicle) throw new NotFoundException('Vehicle not found');
-        if (vehicle.providerId !== providerId) {
+        if (!skipOwnershipCheck && vehicle.providerId !== providerId) {
             throw new ForbiddenException('You do not have permission to delete this vehicle');
         }
 

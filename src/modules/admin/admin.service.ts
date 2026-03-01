@@ -439,4 +439,168 @@ export class AdminService {
         await this.databaseService.cancellationPolicy.delete({ where: { id } });
         return { message: 'Cancellation policy deleted successfully' };
     }
+
+    // ─────────────────────────────────────────
+    // Assign Role to User
+    // ─────────────────────────────────────────
+
+    /**
+     * Assign a provider role (HOST, VENDOR, GUIDE) to a user and ensure their
+     * Provider record exists. If the user already has the role it is a no-op.
+     */
+    async assignRole(userId: string, role: UserRole, providerTypes?: ProviderType[]) {
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { roles: true, provider: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const alreadyHasRole = user.roles.some(r => r.role === role);
+
+        // Derive provider types from role if not supplied
+        const DEFAULT_TYPES: Partial<Record<UserRole, ProviderType[]>> = {
+            [UserRole.HOST]: [ProviderType.HOMESTAY_HOST],
+            [UserRole.VENDOR]: [ProviderType.VEHICLE_PARTNER],
+            [UserRole.GUIDE]: [ProviderType.LOCAL_GUIDE],
+        };
+        const types = providerTypes ?? DEFAULT_TYPES[role] ?? [];
+
+        return this.databaseService.$transaction(async tx => {
+            // Add role if not present
+            if (!alreadyHasRole) {
+                await tx.userRoleMap.create({ data: { userId, role } });
+            }
+
+            // Create or update provider record for provider roles
+            const PROVIDER_ROLES: UserRole[] = [UserRole.HOST, UserRole.VENDOR, UserRole.GUIDE];
+            if (PROVIDER_ROLES.includes(role) && types.length > 0) {
+                if (!user.provider) {
+                    await tx.provider.create({
+                        data: {
+                            userId,
+                            name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+                            type: types,
+                            contactNumber: '',
+                            status: 'PENDING' as any,
+                            verified: false,
+                        },
+                    });
+                } else {
+                    // Merge new types into existing provider
+                    const merged = [...new Set([...user.provider.type, ...types])];
+                    await tx.provider.update({
+                        where: { id: user.provider.id },
+                        data: { type: merged },
+                    });
+                }
+            }
+
+            return tx.user.findUnique({
+                where: { id: userId },
+                include: { roles: true, provider: { select: { id: true, name: true, type: true } } },
+            });
+        });
+    }
+
+    // ─────────────────────────────────────────
+    // Complete Booking (Admin)
+    // ─────────────────────────────────────────
+
+    /**
+     * Transition a booking from CONFIRMED → COMPLETED.
+     * Required before a payout can be created for a booking item.
+     */
+    async completeBooking(bookingId: string) {
+        const booking = await this.databaseService.booking.findUnique({
+            where: { id: bookingId },
+            include: { user: { select: { email: true, firstName: true } } },
+        });
+        if (!booking) throw new NotFoundException('Booking not found');
+
+        if (booking.status !== BookingStatus.CONFIRMED) {
+            throw new BadRequestException(
+                `Booking cannot be completed from status: ${booking.status}. Expected: CONFIRMED`,
+            );
+        }
+
+        const updated = await this.databaseService.booking.update({
+            where: { id: bookingId },
+            data: {
+                status: BookingStatus.COMPLETED,
+                completedAt: new Date(),
+            },
+        });
+
+        // Notify user
+        if (booking.user?.email) {
+            await this.emailService.queueEmail({
+                to: booking.user.email,
+                subject: 'Your Booking is Complete',
+                html: `
+                    <p>Dear ${booking.user.firstName},</p>
+                    <p>Your booking (<strong>${bookingId}</strong>) has been marked as completed.</p>
+                    <p>Thank you for travelling with Drokpa!</p>
+                `,
+            }).catch(() => { /* non-fatal */ });
+        }
+
+        return updated;
+    }
+
+    // ─────────────────────────────────────────
+    // Delete Any Review (Admin)
+    // ─────────────────────────────────────────
+
+    private readonly REVIEW_TARGET_MODELS: Record<string, { model: any; ratingField: string }> = {
+        TOUR: { model: 'tour', ratingField: 'rating' },
+        HOMESTAY: { model: 'homestay', ratingField: 'rating' },
+        VEHICLE: { model: 'vehicle', ratingField: 'rating' },
+        LOCAL_GUIDE: { model: 'localGuide', ratingField: 'rating' },
+    };
+
+    /**
+     * Admin force-deletes any review and re-aggregates the product's rating + totalReviews.
+     * Reviews are keyed by tourId or homestayId (concrete FKs — no generic targetId column).
+     */
+    async deleteReview(reviewId: string) {
+        const review = await this.databaseService.review.findUnique({
+            where: { id: reviewId },
+            select: { id: true, targetType: true, tourId: true, homestayId: true },
+        });
+        if (!review) throw new NotFoundException('Review not found');
+
+        // Determine the concrete product ID from whichever FK is set
+        const productId = review.tourId ?? review.homestayId;
+        if (!productId) throw new BadRequestException('Review has no associated product');
+
+        await this.databaseService.review.delete({ where: { id: reviewId } });
+
+        // Re-aggregate rating for the same product
+        const filterKey = review.tourId ? { tourId: review.tourId } : { homestayId: review.homestayId! };
+        const remaining = await this.databaseService.review.findMany({
+            where: { targetType: review.targetType, ...filterKey },
+            select: { rating: true },
+        });
+
+        const newRating = remaining.length
+            ? remaining.reduce((sum, r) => sum + r.rating, 0) / remaining.length
+            : 0;
+        const totalReviews = remaining.length;
+        const roundedRating = Math.round(newRating * 10) / 10;
+
+        // Update the product's denormalized rating + totalReviews
+        if (review.tourId) {
+            await this.databaseService.tour.update({
+                where: { id: review.tourId },
+                data: { rating: roundedRating, totalReviews },
+            }).catch(() => { /* tour may have been deleted — safe to ignore */ });
+        } else if (review.homestayId) {
+            await this.databaseService.homestay.update({
+                where: { id: review.homestayId },
+                data: { rating: roundedRating, totalReviews },
+            }).catch(() => { /* homestay may have been deleted — safe to ignore */ });
+        }
+
+        return { message: 'Review deleted and ratings updated', productId };
+    }
 }

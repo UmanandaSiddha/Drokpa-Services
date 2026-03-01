@@ -37,6 +37,9 @@ import { FirebaseAdminModule } from './services/firebase/firebase-admin.module';
 import { ServiceWaitlistModule } from './modules/service-waitlist/service-waitlist.module';
 import { CommunityModule } from './modules/community/community.module';
 import { CouponModule } from './modules/coupon/coupon.module';
+import { TagsModule } from './modules/tags/tags.module';
+import { FacilitiesModule } from './modules/facilities/facilities.module';
+import { OfflineRoomBookingModule } from './modules/offline-room-booking/offline-room-booking.module';
 import { Module } from '@nestjs/common';
 
 @Module({
@@ -82,6 +85,9 @@ import { Module } from '@nestjs/common';
 		ServiceWaitlistModule,
 		CommunityModule,
 		CouponModule,
+		TagsModule,
+		FacilitiesModule,
+		OfflineRoomBookingModule,
 	],
 	controllers: [AppController],
 	providers: [

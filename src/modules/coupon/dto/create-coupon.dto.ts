@@ -71,12 +71,34 @@ export class CreateCouponDto {
     @IsEnum(UserRole, { each: true })
     allowedRoles?: UserRole[];
 
+    // ─── Business Rules ──────────────────────────────────────────────────────
+
+    /** Minimum number of participants required (for group discounts on tours) */
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    minParticipants?: number;
+
+    /** Restrict to specific product types (e.g., ['TOUR_VENDOR', 'HOMESTAY_HOST']) */
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    applicableProductTypes?: string[];
+
+    /** Restrict to specific product IDs (UUID array) */
+    @IsOptional()
+    @IsArray()
+    @IsUUID('4', { each: true })
+    applicableProductIds?: string[];
+
+    /** Only valid for first-time users (zero prior confirmed/completed bookings) */
+    @IsOptional()
+    @IsBoolean()
+    firstTimeOnly?: boolean;
+
     /**
-     * Flexible extra rules stored as JSON. Supported keys:
-     *   - minParticipants: number       → group discount (only for tours with N+ guests)
-     *   - applicableProductTypes: string[] → restrict to specific ProviderTypes
-     *   - applicableProductIds: string[]  → restrict to specific product IDs
-     *   - firstTimeOnly: boolean          → only on user's first booking
+     * Flexible extra rules stored as JSON for future expansion.
+     * Use this for any rules not worth their own column.
      */
     @IsOptional()
     rules?: Record<string, any>;

@@ -11,7 +11,7 @@ import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole } from 'generated/prisma/enums';
 import { QueryString } from 'src/utils/apiFeatures';
 
-@Controller('poi')
+@Controller('pois')
 export class POIController {
     constructor(private readonly poiService: POIService) { }
 

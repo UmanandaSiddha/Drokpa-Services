@@ -72,6 +72,10 @@ export class CouponService {
                 maxUsesTotal: dto.maxUsesTotal,
                 maxUsesPerUser: dto.maxUsesPerUser,
                 allowedRoles: dto.allowedRoles ?? [],
+                minParticipants: dto.minParticipants,
+                applicableProductTypes: dto.applicableProductTypes ?? [],
+                applicableProductIds: dto.applicableProductIds ?? [],
+                firstTimeOnly: dto.firstTimeOnly ?? false,
                 rules: dto.rules ?? null,
                 isActive: dto.isActive ?? true,
                 createdBy,
@@ -231,6 +235,10 @@ export class CouponService {
                 minOrderAmount: true,
                 validUntil: true,
                 allowedRoles: true,
+                minParticipants: true,
+                applicableProductTypes: true,
+                applicableProductIds: true,
+                firstTimeOnly: true,
                 rules: true,
                 maxUsesTotal: true,
                 currentUses: true,
@@ -261,6 +269,10 @@ export class CouponService {
                         validFrom: true,
                         validUntil: true,
                         isActive: true,
+                        minParticipants: true,
+                        applicableProductTypes: true,
+                        applicableProductIds: true,
+                        firstTimeOnly: true,
                         rules: true,
                     },
                 },
@@ -356,23 +368,21 @@ export class CouponService {
             }
         }
 
-        // ── JSON rules engine ────────────────────────────────────────────────
-        const rules = coupon.rules as Record<string, any> | null;
+        // ── Business Rules Validation ────────────────────────────────────────
 
         // Rule: minParticipants — for group discounts on tours
-        if (rules?.minParticipants) {
+        if (coupon.minParticipants !== null) {
             const participants = ctx.participants ?? 1;
-            if (participants < rules.minParticipants) {
+            if (participants < coupon.minParticipants) {
                 throw new BadRequestException(
-                    `This coupon requires a minimum of ${rules.minParticipants} participants`,
+                    `This coupon requires a minimum of ${coupon.minParticipants} participants`,
                 );
             }
         }
 
         // Rule: applicableProductTypes — restrict to certain ProviderTypes
-        if (rules?.applicableProductTypes && ctx.productType) {
-            const allowed: string[] = rules.applicableProductTypes;
-            if (!allowed.includes(ctx.productType)) {
+        if (coupon.applicableProductTypes.length > 0 && ctx.productType) {
+            if (!coupon.applicableProductTypes.includes(ctx.productType)) {
                 throw new BadRequestException(
                     `Coupon "${normalizedCode}" is not applicable to this type of booking`,
                 );
@@ -380,9 +390,8 @@ export class CouponService {
         }
 
         // Rule: applicableProductIds — restrict to specific products
-        if (rules?.applicableProductIds && ctx.productId) {
-            const allowed: string[] = rules.applicableProductIds;
-            if (!allowed.includes(ctx.productId)) {
+        if (coupon.applicableProductIds.length > 0 && ctx.productId) {
+            if (!coupon.applicableProductIds.includes(ctx.productId)) {
                 throw new BadRequestException(
                     `Coupon "${normalizedCode}" is not applicable to this specific product`,
                 );
@@ -390,7 +399,7 @@ export class CouponService {
         }
 
         // Rule: firstTimeOnly — user must have zero prior completed bookings
-        if (rules?.firstTimeOnly === true) {
+        if (coupon.firstTimeOnly === true) {
             const priorCount = await this.databaseService.booking.count({
                 where: {
                     userId: ctx.userId,
@@ -403,6 +412,10 @@ export class CouponService {
                 );
             }
         }
+
+        // ── Legacy JSON rules (for backward compatibility or future expansion) ──
+        const rules = coupon.rules as Record<string, any> | null;
+        // Add any additional custom rule checks here if needed
 
         // ── Compute discount ─────────────────────────────────────────────────
         const discountAmount = this.computeDiscount(coupon, ctx);

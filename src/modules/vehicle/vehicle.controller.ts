@@ -17,12 +17,20 @@ export class VehicleController {
 
     @Post()
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.VENDOR)
-    createVehicle(
+    @Roles(UserRole.VENDOR, UserRole.ADMIN)
+    async createVehicle(
         @Body() dto: CreateVehicleDto,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
+        @Query('onBehalfOf') onBehalfOf?: string,
     ) {
-        return this.vehicleService.createVehicle(providerId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        if (isAdmin && !onBehalfOf) {
+            throw new BadRequestException('Admin must supply ?onBehalfOf=<providerId> to create a vehicle on behalf of a provider');
+        }
+        // Admin supplies the target provider's providerId directly via onBehalfOf
+        const effectiveProviderId = isAdmin ? onBehalfOf! : providerId;
+        return this.vehicleService.createVehicle(effectiveProviderId, dto);
     }
 
     // Static routes above :id
@@ -46,9 +54,16 @@ export class VehicleController {
 
     @Get('provider/my-vehicles')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.VENDOR)
-    getMyVehicles(@getUser('providerId') providerId: string) {
-        return this.vehicleService.getMyVehicles(providerId);
+    @Roles(UserRole.VENDOR, UserRole.ADMIN)
+    getMyVehicles(
+        @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
+        @Query('onBehalfOf') onBehalfOf?: string,
+    ) {
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        // Admin can supply ?onBehalfOf to view vehicles for any provider
+        const effectiveProviderId = isAdmin && onBehalfOf ? onBehalfOf : providerId;
+        return this.vehicleService.getMyVehicles(effectiveProviderId);
     }
 
     @Get()
@@ -68,28 +83,43 @@ export class VehicleController {
     }
 
     @Get(':id')
-    getVehicle(@Param('id') id: string) {
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.VENDOR, UserRole.ADMIN)
+    getVehicle(
+        @Param('id') id: string,
+        @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
+        @Query('onBehalfOf') onBehalfOf?: string,
+    ) {
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        // Admin can supply ?onBehalfOf to view vehicle for any provider
+        const effectiveProviderId = isAdmin && onBehalfOf ? onBehalfOf : providerId;
+        // For admin: pass effectiveProviderId and isAdmin flag. For vendor: pass providerId and isAdmin false.
         return this.vehicleService.getVehicle(id);
     }
 
     @Patch(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.VENDOR)
+    @Roles(UserRole.VENDOR, UserRole.ADMIN)
     updateVehicle(
         @Param('id') id: string,
         @Body() dto: Partial<CreateVehicleDto>,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.vehicleService.updateVehicle(id, providerId, dto);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.vehicleService.updateVehicle(id, providerId, dto, isAdmin);
     }
 
     @Delete(':id')
     @UseGuards(AuthGuard, RoleGuard)
-    @Roles(UserRole.VENDOR)
+    @Roles(UserRole.VENDOR, UserRole.ADMIN)
     deleteVehicle(
         @Param('id') id: string,
         @getUser('providerId') providerId: string,
+        @getUser('roles') userRoles: { role: UserRole }[],
     ) {
-        return this.vehicleService.deleteVehicle(id, providerId);
+        const isAdmin = userRoles.some(r => r.role === UserRole.ADMIN);
+        return this.vehicleService.deleteVehicle(id, providerId, isAdmin);
     }
 }

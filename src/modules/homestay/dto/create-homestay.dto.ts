@@ -17,7 +17,8 @@ export class CreateHomestayDto {
     safetyNSecurity?: string[];
 
     @IsArray()
-    imageUrls: string[];
+    @IsOptional()
+    imageUrls?: string[];
 
     @IsInt()
     @IsOptional()

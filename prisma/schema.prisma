@@ -609,6 +609,7 @@ model TourItineraryPOI {
 model Tour {
     id           String   @id @default(uuid())
     title        String
+    slug         String   @unique // SEO-friendly URL slug
     description  String
     type         TourType @default(TOUR)
     basePrice    Int // Original price
@@ -671,6 +672,7 @@ model Activity {
 model Homestay {
     id              String          @id @default(uuid())
     name            String
+    slug            String          @unique // SEO-friendly URL slug
     description     String
     houseRules      String[]
     safetyNSecurity String[]
@@ -720,9 +722,10 @@ model HomestayRoom {
     createdAt       DateTime        @default(now()) @map("created_at")
     updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
 
-    homestay     Homestay           @relation(fields: [homestayId], references: [id])
-    availability RoomAvailability[]
-    bookings     RoomBooking[]
+    homestay        Homestay             @relation(fields: [homestayId], references: [id])
+    availability    RoomAvailability[]
+    bookings        RoomBooking[]
+    offlineBookings OfflineRoomBooking[]
 
     @@index([homestayId, isActive])
 }
@@ -759,6 +762,24 @@ model RoomBooking {
 
     room        HomestayRoom @relation(fields: [roomId], references: [id])
     bookingItem BookingItem  @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+
+    @@index([roomId, checkIn, checkOut])
+    @@index([checkIn, checkOut])
+}
+
+model OfflineRoomBooking {
+    id         String   @id @default(uuid())
+    roomId     String
+    guestName  String
+    checkIn    DateTime
+    checkOut   DateTime
+    rooms      Int // Number of rooms booked offline
+    noOfGuests Int
+    notes      String?  @db.Text
+    createdAt  DateTime @default(now()) @map("created_at")
+    updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+    room HomestayRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
     @@index([roomId, checkIn, checkOut])
     @@index([checkIn, checkOut])
@@ -1184,7 +1205,13 @@ model Coupon {
     // may use this coupon. An empty array = no role restriction.
     allowedRoles UserRole[]
 
-    // Extra flexible rules (see model comment above for examples)
+    // ── Business Rules (extracted from flexible JSON) ──────────────────────────
+    minParticipants        Int? // Minimum participants required (for group discounts)
+    applicableProductTypes String[] // Restrict to specific ProviderTypes (e.g., ["TOUR_VENDOR"])
+    applicableProductIds   String[] // Restrict to specific product IDs
+    firstTimeOnly          Boolean  @default(false) // Only valid for first-time users
+
+    // Extra flexible rules for future expansion (anything not worth its own column)
     rules Json?
 
     isActive  Boolean  @default(true)

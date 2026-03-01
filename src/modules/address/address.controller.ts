@@ -1,10 +1,16 @@
 import { Controller, Post, Get, Put, Body, Param, Query, BadRequestException } from '@nestjs/common';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
+import { QueryString } from 'src/utils/apiFeatures';
 
-@Controller('address')
+@Controller('addresses')
 export class AddressController {
     constructor(private readonly addressService: AddressService) { }
+
+    @Get()
+    getAllAddresses(@Query() query: QueryString) {
+        return this.addressService.getAllAddresses(query);
+    }
 
     @Post()
     createAddress(@Body() dto: CreateAddressDto) {

@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateHomestayDto } from './dto/create-homestay.dto';
-import { BookingCriteria } from 'generated/prisma/enums';
+import { BookingCriteria, BookingStatus } from 'generated/prisma/enums';
 import { Prisma } from 'generated/prisma/client';
 import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
+import { CreateHomestayRoomDto } from './dto/create-room.dto';
+import { generateUniqueSlugFromText } from 'src/utils/slug.helper';
 
 // ─────────────────────────────────────────────
 // Reusable include shapes
@@ -98,6 +100,17 @@ export class HomestayService {
         }
     }
 
+    private async getProviderIdByUserId(userId: string): Promise<string> {
+        const provider = await this.databaseService.provider.findUnique({
+            where: { userId },
+            select: { id: true },
+        });
+        if (!provider) {
+            throw new NotFoundException('Provider profile not found for this user');
+        }
+        return provider.id;
+    }
+
     // ─────────────────────────────────────────
     // Create
     // ─────────────────────────────────────────
@@ -115,9 +128,21 @@ export class HomestayService {
             await this.validateAddress(dto.addressId);
         }
 
+        // Generate unique slug from name
+        const slug = await generateUniqueSlugFromText(
+            dto.name,
+            async (candidate) => {
+                const existing = await this.databaseService.homestay.findUnique({
+                    where: { slug: candidate },
+                });
+                return !!existing;
+            },
+        );
+
         return this.databaseService.homestay.create({
             data: {
                 name: dto.name,
+                slug,
                 description: dto.description,
                 houseRules: dto.houseRules ?? [],
                 safetyNSecurity: dto.safetyNSecurity ?? [],
@@ -226,6 +251,26 @@ export class HomestayService {
     }
 
     // ─────────────────────────────────────────
+    // Get by Slug (SEO-friendly URL)
+    // ─────────────────────────────────────────
+
+    async getHomestayBySlug(
+        slug: string,
+        options?: { checkIn?: Date; checkOut?: Date },
+    ) {
+        const homestay = await this.databaseService.homestay.findUnique({
+            where: { slug },
+            include: buildDetailInclude(options?.checkIn, options?.checkOut),
+        });
+
+        if (!homestay) {
+            throw new NotFoundException('Homestay not found');
+        }
+
+        return homestay;
+    }
+
+    // ─────────────────────────────────────────
     // Update
     // ─────────────────────────────────────────
 
@@ -233,22 +278,39 @@ export class HomestayService {
         id: string,
         providerId: string,
         dto: Partial<CreateHomestayDto>,
+        skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
             where: { id },
-            select: { id: true, providerId: true },
+            select: { id: true, providerId: true, name: true, slug: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
 
-        this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) this.assertOwnership(homestay.providerId, providerId);
 
         if (dto.addressId) {
             await this.validateAddress(dto.addressId);
         }
 
+        // Regenerate slug if name changes
+        let slug = homestay.slug;
+        if (dto.name && dto.name !== homestay.name) {
+            slug = await generateUniqueSlugFromText(
+                dto.name,
+                async (candidate) => {
+                    const existing = await this.databaseService.homestay.findUnique({
+                        where: { slug: candidate },
+                    });
+                    // Allow the current homestay's slug to match itself
+                    return !!existing && existing.id !== id;
+                },
+            );
+        }
+
         // Use !== undefined throughout — falsy check silently skips empty arrays & false values
         const data: Prisma.HomestayUpdateInput = {
             ...(dto.name !== undefined && { name: dto.name }),
+            ...(dto.name !== undefined && { slug }),
             ...(dto.description !== undefined && { description: dto.description }),
             ...(dto.houseRules !== undefined && { houseRules: dto.houseRules }),
             ...(dto.safetyNSecurity !== undefined && { safetyNSecurity: dto.safetyNSecurity }),
@@ -292,23 +354,21 @@ export class HomestayService {
         // IDs + distances only — avoids t.* camelCase/snake_case mismatch
         // JOIN (not LEFT JOIN) because LEFT JOIN + WHERE a.location IS NOT NULL = JOIN anyway
         // Alias distance_meters so ORDER BY references the alias — no double computation
-        const nearby = await this.databaseService.$queryRaw<
-            Array<{ id: string; distance_meters: number }>
-        >`
+        const nearby = await this.databaseService.$queryRaw<Array<{ id: string; distance_meters: number }>>`
             SELECT h.id,
-                   ST_Distance(
-                       a.location,
-                       ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
-                   ) AS distance_meters
+                ST_Distance(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography
+                ) AS distance_meters
             FROM "Homestay" h
             JOIN "Address" a ON h."addressId" = a.id
             WHERE h."isActive" = true
-              AND a.location IS NOT NULL
-              AND ST_DWithin(
-                  a.location,
-                  ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
-                  ${radiusMeters}
-              )
+                AND a.location IS NOT NULL
+                AND ST_DWithin(
+                    a.location,
+                    ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+                    ${radiusMeters}
+                )
             ORDER BY distance_meters ASC
         `;
 
@@ -337,6 +397,7 @@ export class HomestayService {
         homestayId: string,
         tagIds: string[],
         providerId?: string,
+        skipOwnershipCheck = false,
     ) {
         if (!tagIds.length) {
             throw new BadRequestException('At least one tag ID is required');
@@ -347,7 +408,7 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
 
         // Validate all tag IDs exist in one query
         const existingTags = await this.databaseService.tag.findMany({
@@ -378,13 +439,14 @@ export class HomestayService {
         homestayId: string,
         tagId: string,
         providerId?: string,
+        skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
             where: { id: homestayId },
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
 
         try {
             await this.databaseService.homestayTag.delete({
@@ -408,6 +470,7 @@ export class HomestayService {
         homestayId: string,
         facilityIds: string[],
         providerId?: string,
+        skipOwnershipCheck = false,
     ) {
         if (!facilityIds.length) {
             throw new BadRequestException('At least one facility ID is required');
@@ -418,7 +481,7 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
 
         const existingFacilities = await this.databaseService.facility.findMany({
             where: { id: { in: facilityIds } },
@@ -448,13 +511,14 @@ export class HomestayService {
         homestayId: string,
         facilityId: string,
         providerId?: string,
+        skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
             where: { id: homestayId },
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
 
         try {
             await this.databaseService.homestayFacility.delete({
@@ -468,5 +532,207 @@ export class HomestayService {
             where: { id: homestayId },
             include: { facilities: { include: { facility: true } } },
         });
+    }
+
+    // ─────────────────────────────────────────
+    // Rooms
+    // ─────────────────────────────────────────
+
+    async createRoom(
+        homestayId: string,
+        userId: string,
+        dto: CreateHomestayRoomDto,
+        skipOwnershipCheck = false,
+    ) {
+        const homestay = await this.databaseService.homestay.findUnique({
+            where: { id: homestayId },
+            select: { id: true, providerId: true },
+        });
+        if (!homestay) throw new NotFoundException('Homestay not found');
+
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
+
+        const discount = dto.discount ?? 0;
+        const finalPrice = Math.max(0, dto.basePrice - discount);
+
+        return this.databaseService.homestayRoom.create({
+            data: {
+                homestayId,
+                name: dto.name,
+                description: dto.description,
+                capacity: dto.capacity,
+                basePrice: dto.basePrice,
+                discount,
+                finalPrice,
+                bookingCriteria: dto.bookingCriteria ?? BookingCriteria.PER_NIGHT,
+                totalRooms: dto.totalRooms,
+                amenities: dto.amenities ?? [],
+                imageUrls: dto.imageUrls ?? [],
+                isActive: dto.isActive ?? true,
+            },
+            include: {
+                homestay: { select: { id: true, name: true } },
+            },
+        });
+    }
+
+    async getRooms(homestayId: string) {
+        const homestay = await this.databaseService.homestay.findUnique({
+            where: { id: homestayId },
+            select: { id: true },
+        });
+        if (!homestay) throw new NotFoundException('Homestay not found');
+
+        return this.databaseService.homestayRoom.findMany({
+            where: { homestayId, isActive: true },
+            orderBy: { basePrice: 'asc' },
+        });
+    }
+
+    async updateRoom(
+        homestayId: string,
+        roomId: string,
+        userId: string,
+        dto: Partial<CreateHomestayRoomDto>,
+        skipOwnershipCheck = false,
+    ) {
+        const room = await this.databaseService.homestayRoom.findFirst({
+            where: { id: roomId, homestayId },
+            include: { homestay: { select: { providerId: true } } },
+        });
+        if (!room) throw new NotFoundException('Room not found for this homestay');
+
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(room.homestay.providerId, providerId);
+        }
+
+        const nextBasePrice = dto.basePrice ?? room.basePrice;
+        const nextDiscount = dto.discount ?? room.discount;
+        const data: Prisma.HomestayRoomUpdateInput = {
+            ...(dto.name !== undefined && { name: dto.name }),
+            ...(dto.description !== undefined && { description: dto.description }),
+            ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+            ...(dto.basePrice !== undefined && { basePrice: dto.basePrice }),
+            ...(dto.discount !== undefined && { discount: dto.discount }),
+            ...(dto.bookingCriteria !== undefined && { bookingCriteria: dto.bookingCriteria }),
+            ...(dto.totalRooms !== undefined && { totalRooms: dto.totalRooms }),
+            ...(dto.amenities !== undefined && { amenities: dto.amenities }),
+            ...(dto.imageUrls !== undefined && { imageUrls: dto.imageUrls }),
+            ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+            finalPrice: Math.max(0, nextBasePrice - nextDiscount),
+        };
+
+        return this.databaseService.homestayRoom.update({
+            where: { id: roomId },
+            data,
+            include: {
+                homestay: { select: { id: true, name: true } },
+            },
+        });
+    }
+
+    async deleteRoom(
+        homestayId: string,
+        roomId: string,
+        userId: string,
+        skipOwnershipCheck = false,
+    ) {
+        const room = await this.databaseService.homestayRoom.findFirst({
+            where: { id: roomId, homestayId },
+            include: { homestay: { select: { providerId: true } } },
+        });
+        if (!room) throw new NotFoundException('Room not found for this homestay');
+
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(room.homestay.providerId, providerId);
+        }
+
+        const activeBookings = await this.databaseService.roomBooking.count({
+            where: {
+                roomId,
+                bookingItem: {
+                    booking: {
+                        status: {
+                            in: [
+                                BookingStatus.REQUESTED,
+                                BookingStatus.AWAITING_PAYMENT,
+                                BookingStatus.CONFIRMED,
+                            ],
+                        },
+                    },
+                },
+            },
+        });
+
+        if (activeBookings > 0) {
+            throw new BadRequestException(
+                `Cannot delete room with ${activeBookings} active booking(s). Deactivate instead.`,
+            );
+        }
+
+        await this.databaseService.homestayRoom.update({
+            where: { id: roomId },
+            data: { isActive: false },
+        });
+
+        return { message: 'Room deleted successfully' };
+    }
+
+    // ─────────────────────────────────────────
+    // Delete Homestay
+    // ─────────────────────────────────────────
+
+    async deleteHomestay(
+        id: string,
+        userId: string,
+        skipOwnershipCheck = false,
+    ) {
+        const homestay = await this.databaseService.homestay.findUnique({
+            where: { id },
+            select: { id: true, providerId: true },
+        });
+        if (!homestay) throw new NotFoundException('Homestay not found');
+
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
+
+        // Check for active bookings across all rooms
+        const activeBookings = await this.databaseService.roomBooking.count({
+            where: {
+                room: { homestayId: id },
+                bookingItem: {
+                    booking: {
+                        status: {
+                            in: [
+                                BookingStatus.REQUESTED,
+                                BookingStatus.AWAITING_PAYMENT,
+                                BookingStatus.CONFIRMED,
+                            ],
+                        },
+                    },
+                },
+            },
+        });
+
+        if (activeBookings > 0) {
+            throw new BadRequestException(
+                `Cannot delete homestay with ${activeBookings} active booking(s). Deactivate instead.`,
+            );
+        }
+
+        // Soft delete by setting isActive to false
+        await this.databaseService.homestay.update({
+            where: { id },
+            data: { isActive: false },
+        });
+
+        return { message: 'Homestay deleted successfully' };
     }
 }
