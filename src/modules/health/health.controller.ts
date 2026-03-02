@@ -5,6 +5,11 @@ import { RedisHealthService } from "./health.service";
 export class RedisHealthController {
     constructor(private readonly redisHealthService: RedisHealthService) { }
 
+    @Get()
+    health() {
+        return { status: 'ok' };
+    }
+
     @Get('redis-health')
     async checkRedis() {
         return await this.redisHealthService.checkAllConnections();
