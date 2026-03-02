@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../logger/logger.service';
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+// import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { Resend } from 'resend';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -11,7 +11,6 @@ import { SendEmailDto } from './dto/send-email.dto';
 @Injectable()
 export class EmailService {
     private readonly logger = new LoggerService(EmailService.name);
-    private readonly sesClient?: SESClient;
     private readonly resendClient?: Resend;
     private readonly fromEmail: string;
 
@@ -19,30 +18,14 @@ export class EmailService {
         private readonly configService: ConfigService,
         @InjectQueue(EMAIL_QUEUE) private readonly emailQueue: Queue,
     ) {
-        const awsRegion = this.configService.get<string>('AWS_REGION');
-        const awsAccessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-        const awsSecretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-
-        if (awsRegion && awsAccessKeyId && awsSecretAccessKey) {
-            this.sesClient = new SESClient({
-                region: awsRegion,
-                credentials: {
-                    accessKeyId: awsAccessKeyId,
-                    secretAccessKey: awsSecretAccessKey,
-                },
-            });
-        } else {
-            this.logger.warn('AWS SES credentials not configured. Email sending will fall back to Resend.');
-        }
-
         const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
         if (resendApiKey) {
             this.resendClient = new Resend(resendApiKey);
         } else {
-            this.logger.warn('Resend API key not configured. Email sending may fail.');
+            this.logger.warn('Resend API key not configured. Email sending will fail.');
         }
 
-        this.fromEmail = this.configService.get<string>('SES_FROM_EMAIL') || 'noreply@drokpa.in';
+        this.fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL') || 'noreply@drokpa.in';
     }
 
     /**
@@ -68,82 +51,79 @@ export class EmailService {
     }
 
     /**
-     * Send email directly via Resend (primary) or AWS SES (fallback)
+     * Send email via Resend
      */
     async sendEmail(dto: SendEmailDto): Promise<void> {
-        // Try Resend first (primary service)
-        if (this.resendClient) {
-            try {
-                const response = await this.resendClient.emails.send({
-                    from: this.fromEmail,
-                    to: dto.to,
-                    subject: dto.subject,
-                    ...(dto.html && { html: dto.html }),
-                    ...(dto.text && { text: dto.text }),
-                });
-
-                if (response.error) {
-                    this.logger.error(`Resend failed to send email to ${dto.to}:`, JSON.stringify(response.error));
-                    // Fall back to SES
-                    await this.sendViaSES(dto);
-                } else {
-                    this.logger.log(`Email sent successfully via Resend to ${dto.to}, Id: ${response.data?.id}`);
-                }
-            } catch (error) {
-                this.logger.error(`Resend error for ${dto.to}:`, error);
-                // Fall back to SES
-                await this.sendViaSES(dto);
-            }
-        } else {
-            // If Resend not configured, try SES
-            await this.sendViaSES(dto);
-        }
-    }
-
-    /**
-     * Send email via AWS SES (fallback)
-     */
-    private async sendViaSES(dto: SendEmailDto): Promise<void> {
-        if (!this.sesClient) {
-            this.logger.warn('AWS SES client not initialized and Resend failed. Email not sent.');
+        if (!this.resendClient) {
+            this.logger.warn('Resend client not initialized. Email not sent.');
             return;
         }
 
         try {
-            const command = new SendEmailCommand({
-                Source: this.fromEmail,
-                Destination: {
-                    ToAddresses: [dto.to],
-                },
-                Message: {
-                    Subject: {
-                        Data: dto.subject,
-                        Charset: 'UTF-8',
-                    },
-                    Body: {
-                        ...(dto.html && {
-                            Html: {
-                                Data: dto.html,
-                                Charset: 'UTF-8',
-                            },
-                        }),
-                        ...(dto.text && {
-                            Text: {
-                                Data: dto.text,
-                                Charset: 'UTF-8',
-                            },
-                        }),
-                    },
-                },
+            const response = await this.resendClient.emails.send({
+                from: this.fromEmail,
+                to: dto.to,
+                subject: dto.subject,
+                ...(dto.html && { html: dto.html }),
+                ...(dto.text && { text: dto.text }),
             });
 
-            const response = await this.sesClient.send(command);
-            this.logger.log(`Email sent successfully via SES to ${dto.to}, MessageId: ${response.MessageId}`);
+            if (response.error) {
+                this.logger.error(`Failed to send email to ${dto.to}:`, JSON.stringify(response.error));
+            } else {
+                this.logger.log(`Email sent successfully to ${dto.to}, Id: ${response.data?.id}`);
+            }
         } catch (error) {
-            this.logger.error(`Failed to send email via SES to ${dto.to}:`, error);
-            throw error;
+            this.logger.error(`Error sending email to ${dto.to}:`, error);
         }
     }
+
+    /**
+     * Send email via AWS SES (fallback) - COMMENTED OUT FOR NOW
+     */
+    // private async sendViaSES(dto: SendEmailDto): Promise<void> {
+    //     if (!this.sesClient) {
+    //         this.logger.warn('AWS SES client not initialized and Resend failed. Email not sent.');
+    //         return;
+    //     }
+
+    //     try {
+    //         const command = new SendEmailCommand({
+    //             Source: this.fromEmail,
+    //             Destination: {
+    //                 ToAddresses: [dto.to],
+    //             },
+    //             Message: {
+    //                 Subject: {
+    //                     Data: dto.subject,
+    //                     Charset: 'UTF-8',
+    //                 },
+    //                 Body: {
+    //                     ...(dto.html && {
+    //                         Html: {
+    //                             Data: dto.html,
+    //                             Charset: 'UTF-8',
+    //                         },
+    //                     }),
+    //                     ...(dto.text && {
+    //                         Text: {
+    //                             Data: dto.text,
+    //                             Charset: 'UTF-8',
+    //                         },
+    //                     }),
+    //                 },
+    //             },
+    //         });
+
+    //         const response = await this.sesClient.send(command);
+    //         this.logger.log(`Email sent successfully via SES to ${dto.to}, MessageId: ${response.MessageId}`);
+    //     } catch (error) {
+    //         this.logger.error(`Failed to send email via SES to ${dto.to}:`, error);
+    //         throw error;
+    //     }
+    // }
+
+
 
     /**
      * Send booking confirmation email

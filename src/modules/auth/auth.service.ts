@@ -127,8 +127,7 @@ export class AuthService {
 
 		res.cookie(tokenName, token, {
 			httpOnly: true,
-			// secure: isProduction,
-			secure: true,
+			secure: isProduction,
 			sameSite: 'lax',
 			maxAge: age * 60 * 1000,
 			path: '/',
@@ -143,8 +142,7 @@ export class AuthService {
 
 		res.clearCookie(tokenName, {
 			httpOnly: true,
-			// secure: isProduction,
-			secure: true,
+			secure: isProduction,
 			sameSite: 'lax',
 			path: '/',
 			...(isProduction && { domain: '.drokpa.in' }),
