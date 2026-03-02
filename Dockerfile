@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# prisma needs openssl on alpine
+RUN apk add --no-cache openssl
+
 # install dependencies
 COPY package*.json ./
 RUN npm ci
@@ -22,21 +25,21 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 # copy dependencies
 COPY --from=builder /app/node_modules ./node_modules
 
 # copy compiled app
 COPY --from=builder /app/dist ./dist
 
-# copy prisma schema + migrations
+# copy prisma schema
 COPY --from=builder /app/prisma ./prisma
 
-# copy package.json for npm scripts
 COPY package*.json ./
 
 ENV NODE_ENV=production
 
 EXPOSE 4000
 
-# run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
