@@ -1,15 +1,15 @@
 version: '3.8'
 
 services:
+
     postgres:
         image: postgres:17-alpine
         container_name: drokpa_postgres
+        restart: always
         environment:
             POSTGRES_DB: ${DB_NAME:-drokpa_db}
             POSTGRES_USER: ${DB_USER:-postgres}
             POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-        ports:
-            - "5432:5432"
         volumes:
             - postgres_data:/var/lib/postgresql/data
         healthcheck:
@@ -20,50 +20,87 @@ services:
         networks:
             - drokpa_network
 
+
     redis:
-        image: redis:7-alpine
+        image: redis/redis-stack:latest
         container_name: drokpa_redis
-        ports:
-            - "6379:6379"
+        restart: always
         volumes:
             - redis_data:/data
         healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
+            test: ["CMD-SHELL", "redis-cli ping || exit 1"]
             interval: 10s
             timeout: 5s
             retries: 5
         networks:
             - drokpa_network
 
+
     app:
         build:
-            context: .
+            context: ..
             dockerfile: Dockerfile
         container_name: drokpa_app
+        restart: always
         depends_on:
             postgres:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+        env_file:
+            - ../.env
         environment:
             NODE_ENV: ${NODE_ENV:-production}
             DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-drokpa_db}
             REDIS_URL: redis://redis:6379
-            PORT: 8080
-        ports:
-            - "8080:8080"
+            PORT: 4000
+        expose:
+            - "4000"
         networks:
             - drokpa_network
         healthcheck:
-            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/api/v1/health"]
             interval: 30s
             timeout: 10s
             retries: 3
             start_period: 40s
 
+
+    caddy:
+        image: caddy:2
+        container_name: drokpa_caddy
+        restart: unless-stopped
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+            - caddy_data:/data
+            - caddy_config:/config
+        depends_on:
+            - app
+        networks:
+            - drokpa_network
+
+
+    dozzle:
+        image: amir20/dozzle:latest
+        container_name: drokpa_dozzle
+        restart: unless-stopped
+        ports:
+            - "9999:8080"
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+        networks:
+            - drokpa_network
+
+
 volumes:
     postgres_data:
     redis_data:
+    caddy_data:
+    caddy_config:
+
 
 networks:
     drokpa_network:

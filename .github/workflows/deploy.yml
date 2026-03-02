@@ -1,0 +1,24 @@
+name: Deploy Backend
+
+on:
+    push:
+        branches:
+        - main
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Deploy to VPS
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                host: ${{ secrets.SERVER_IP }}
+                username: root
+                key: ${{ secrets.SERVER_SSH_KEY }}
+                script: |
+                    cd /opt/drokpa/drokpa-nest-services
+                    git pull
+                    docker compose -f deploy/docker-compose.yml up -d --build

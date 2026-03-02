@@ -1,42 +1,42 @@
-FROM node:23-alpine AS builder
+# ---------- BUILD STAGE ----------
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install all dependencies (including dev)
+# install dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy source code
+# copy source
 COPY . .
 
-# Generate Prisma client
+# generate prisma client
 RUN npx prisma generate
 
-# Build the application
+# build nestjs
 RUN npm run build
 
 
-FROM node:23-alpine AS runner
+# ---------- PRODUCTION STAGE ----------
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Install only production dependencies
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
+# copy dependencies
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy Prisma schema and migrations
-COPY prisma ./prisma
+# copy compiled app
+COPY --from=builder /app/dist ./dist
+
+# copy prisma schema + migrations
+COPY --from=builder /app/prisma ./prisma
+
+# copy package.json for npm scripts
+COPY package*.json ./
 
 ENV NODE_ENV=production
-EXPOSE 8080
 
-# Run Prisma migrations and start the application
+EXPOSE 4000
+
+# run migrations then start server
 CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-CMD node -e "require('http').get('http://localhost:8080/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
