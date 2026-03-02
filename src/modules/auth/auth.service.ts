@@ -127,10 +127,12 @@ export class AuthService {
 
 		res.cookie(tokenName, token, {
 			httpOnly: true,
-			secure: isProduction,
+			// secure: isProduction,
+			secure: true,
 			sameSite: 'lax',
 			maxAge: age * 60 * 1000,
 			path: '/',
+			...(isProduction && { domain: '.drokpa.in' }),
 		});
 	}
 
@@ -141,9 +143,11 @@ export class AuthService {
 
 		res.clearCookie(tokenName, {
 			httpOnly: true,
-			secure: isProduction,
+			// secure: isProduction,
+			secure: true,
 			sameSite: 'lax',
 			path: '/',
+			...(isProduction && { domain: '.drokpa.in' }),
 		});
 	}
 
