@@ -19,6 +19,6 @@ jobs:
                 username: root
                 key: ${{ secrets.SERVER_SSH_KEY }}
                 script: |
-                    cd /opt/drokpa/drokpa-nest-services
+                    cd /opt/drokpa/Drokpa-Services
                     git pull
                     docker compose -f deploy/docker-compose.yml up -d --build
