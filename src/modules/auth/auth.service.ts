@@ -290,8 +290,9 @@ export class AuthService {
 		};
 
 		return {
+			success: true,
 			message: 'User registered successfully',
-			data: safeUser,
+			data: { user: safeUser },
 		};
 	}
 
@@ -358,8 +359,11 @@ export class AuthService {
 
 		// Return response with onboarding status
 		const response: any = {
+			success: true,
 			message: 'Email verified successfully',
-			user: safeUser,
+			data: {
+				user: safeUser,
+			},
 		};
 
 		if (onboardingResult?.requiresCompletion) {
@@ -481,8 +485,9 @@ export class AuthService {
 		};
 
 		return {
+			success: true,
 			message: 'User logged in successfully',
-			data: safeUser,
+			data: { user: safeUser },
 		};
 	}
 
