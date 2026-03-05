@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from 'src/services/database/database.service';
 import { CreateHomestayDto } from './dto/create-homestay.dto';
-import { BookingCriteria, BookingStatus } from 'generated/prisma/enums';
+import { UpdateHomestayDto } from './dto/update-homestay.dto';
+import { BookingCriteria, BookingStatus, ProviderType } from 'generated/prisma/enums';
 import { Prisma } from 'generated/prisma/client';
 import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
 import { CreateHomestayRoomDto } from './dto/create-room.dto';
@@ -276,8 +277,8 @@ export class HomestayService {
 
     async updateHomestay(
         id: string,
-        providerId: string,
-        dto: Partial<CreateHomestayDto>,
+        userId: string,
+        dto: UpdateHomestayDto,
         skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
@@ -286,10 +287,30 @@ export class HomestayService {
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
 
-        if (!skipOwnershipCheck) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
 
         if (dto.addressId) {
             await this.validateAddress(dto.addressId);
+        }
+
+        if (dto.providerId !== undefined) {
+            if (!skipOwnershipCheck) {
+                throw new ForbiddenException('Only admins can reassign homestay provider');
+            }
+            const newProvider = await this.databaseService.provider.findUnique({
+                where: { id: dto.providerId },
+                select: { id: true, type: true },
+            });
+            if (!newProvider) {
+                throw new BadRequestException(`Provider ${dto.providerId} not found`);
+            }
+            // Provider.type is an array in schema; ensure homestay host capability
+            if (!newProvider.type?.includes(ProviderType.HOMESTAY_HOST)) {
+                throw new BadRequestException('Provider is not a homestay host');
+            }
         }
 
         // Regenerate slug if name changes
@@ -321,6 +342,7 @@ export class HomestayService {
             ...(dto.phoneNumber !== undefined && { phoneNumber: dto.phoneNumber }),
             ...(dto.isActive !== undefined && { isActive: dto.isActive }),
             ...(dto.addressId !== undefined && { addressId: dto.addressId || null }),
+            ...(dto.providerId !== undefined && { providerId: dto.providerId }),
         };
 
         return this.databaseService.homestay.update({
@@ -396,7 +418,7 @@ export class HomestayService {
     async addTagsToHomestay(
         homestayId: string,
         tagIds: string[],
-        providerId?: string,
+        userId: string,
         skipOwnershipCheck = false,
     ) {
         if (!tagIds.length) {
@@ -408,7 +430,10 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
 
         // Validate all tag IDs exist in one query
         const existingTags = await this.databaseService.tag.findMany({
@@ -438,7 +463,7 @@ export class HomestayService {
     async removeTagFromHomestay(
         homestayId: string,
         tagId: string,
-        providerId?: string,
+        userId: string,
         skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
@@ -446,7 +471,10 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
 
         try {
             await this.databaseService.homestayTag.delete({
@@ -469,7 +497,7 @@ export class HomestayService {
     async addFacilitiesToHomestay(
         homestayId: string,
         facilityIds: string[],
-        providerId?: string,
+        userId: string,
         skipOwnershipCheck = false,
     ) {
         if (!facilityIds.length) {
@@ -481,7 +509,10 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
 
         const existingFacilities = await this.databaseService.facility.findMany({
             where: { id: { in: facilityIds } },
@@ -510,7 +541,7 @@ export class HomestayService {
     async removeFacilityFromHomestay(
         homestayId: string,
         facilityId: string,
-        providerId?: string,
+        userId: string,
         skipOwnershipCheck = false,
     ) {
         const homestay = await this.databaseService.homestay.findUnique({
@@ -518,7 +549,10 @@ export class HomestayService {
             select: { id: true, providerId: true },
         });
         if (!homestay) throw new NotFoundException('Homestay not found');
-        if (!skipOwnershipCheck && providerId) this.assertOwnership(homestay.providerId, providerId);
+        if (!skipOwnershipCheck) {
+            const providerId = await this.getProviderIdByUserId(userId);
+            this.assertOwnership(homestay.providerId, providerId);
+        }
 
         try {
             await this.databaseService.homestayFacility.delete({

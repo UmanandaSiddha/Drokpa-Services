@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { HomestayService } from './homestay.service';
 import { CreateHomestayDto } from './dto/create-homestay.dto';
+import { UpdateHomestayDto } from './dto/update-homestay.dto';
 import { CreateHomestayRoomDto } from './dto/create-room.dto';
 import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
@@ -96,7 +97,7 @@ export class HomestayController {
     @Roles(UserRole.HOST, UserRole.ADMIN)
     updateHomestay(
         @Param('id') id: string,
-        @Body() dto: Partial<CreateHomestayDto>,
+        @Body() dto: UpdateHomestayDto,
         @getUser('id') userId: string,
         @getUser('roles') userRoles: { role: UserRole }[],
     ) {

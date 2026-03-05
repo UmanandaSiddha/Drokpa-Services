@@ -11,11 +11,14 @@ import {
     ParseEnumPipe,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { AuthGuard } from 'src/modules/auth/guards/auth.guard';
+import { AuthGuard, getUser } from 'src/modules/auth/guards/auth.guard';
 import { RoleGuard } from 'src/modules/auth/guards/role.guard';
 import { Roles } from 'src/modules/auth/decorator/role.decorator';
 import { UserRole, ProviderStatus, BookingStatus } from 'generated/prisma/enums';
 import { QueryString } from 'src/utils/apiFeatures';
+import { AdminUserRoleDto } from './dto/admin-user-role.dto';
+import { UpdateAdminUserDto } from './dto/update-admin-user.dto';
+import { SetUserPasswordDto } from './dto/set-user-password.dto';
 
 @Controller('admin')
 @UseGuards(AuthGuard, RoleGuard)
@@ -111,6 +114,16 @@ export class AdminController {
         return this.adminService.getAllUsers(query);
     }
 
+    @Get('user/:id')
+    getUserById(@Param('id') userId: string) {
+        return this.adminService.getUserById(userId);
+    }
+
+    @Patch('user/:id')
+    updateUser(@Param('id') userId: string, @Body() dto: UpdateAdminUserDto) {
+        return this.adminService.updateUser(userId, dto);
+    }
+
     // ─────────────────────────────────────────
     // Cancellation Policies
     // ─────────────────────────────────────────
@@ -158,6 +171,36 @@ export class AdminController {
         @Body() body: { role: UserRole; providerTypes?: string[] },
     ) {
         return this.adminService.assignRole(userId, body.role, body.providerTypes as any);
+    }
+
+    /** Add any role to a user (including ADMIN). */
+    @Patch('user/:id/roles/add')
+    addRole(
+        @getUser('id') adminUserId: string,
+        @Param('id') userId: string,
+        @Body() dto: AdminUserRoleDto,
+    ) {
+        return this.adminService.addRole(adminUserId, userId, dto.role, dto.providerTypes);
+    }
+
+    /** Remove a role from a user. */
+    @Patch('user/:id/roles/remove')
+    removeRole(
+        @getUser('id') adminUserId: string,
+        @Param('id') userId: string,
+        @Body() dto: AdminUserRoleDto,
+    ) {
+        return this.adminService.removeRole(adminUserId, userId, dto.role);
+    }
+
+    /** Admin sets/reset a user's password without revealing it. */
+    @Patch('user/:id/password')
+    setUserPassword(
+        @getUser('id') adminUserId: string,
+        @Param('id') userId: string,
+        @Body() dto: SetUserPasswordDto,
+    ) {
+        return this.adminService.setUserPassword(adminUserId, userId, dto.password);
     }
 
     // ─────────────────────────────────────────

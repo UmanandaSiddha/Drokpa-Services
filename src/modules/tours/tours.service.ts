@@ -200,6 +200,11 @@ export class ToursService {
         const tour = await this.databaseService.tour.findUnique({ where: { id } });
         if (!tour) throw new NotFoundException('Tour not found');
 
+        const normalizedType =
+            dto.type === 'TOUR' || dto.type === 'TREK'
+                ? dto.type
+                : undefined;
+
         if (dto.tags?.length) {
             await this.validateTags(dto.tags);
         }
@@ -229,7 +234,7 @@ export class ToursService {
             ...(dto.title !== undefined && { title: dto.title }),
             ...(dto.title !== undefined && { slug }),
             ...(dto.description !== undefined && { description: dto.description }),
-            ...(dto.type !== undefined && { type: dto.type }),
+            ...(normalizedType !== undefined && { type: normalizedType }),
             ...(dto.duration !== undefined && { duration: dto.duration }),
             ...(dto.imageUrls !== undefined && { imageUrls: dto.imageUrls }),
             ...(dto.maxCapacity !== undefined && { maxCapacity: dto.maxCapacity }),

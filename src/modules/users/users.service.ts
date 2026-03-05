@@ -16,6 +16,20 @@ export class UserService {
         private readonly authService: AuthService,
     ) { }
 
+    private getDefaultAdminEmail(): string | null {
+        const v = (process.env.DEFAULT_ADMIN_EMAIL || '').trim().toLowerCase();
+        return v ? v : null;
+    }
+
+    private assertNotDefaultAdminEmail(email?: string | null) {
+        const defaultEmail = this.getDefaultAdminEmail();
+        if (!defaultEmail) return;
+        const target = (email || '').trim().toLowerCase();
+        if (target && target === defaultEmail) {
+            throw new BadRequestException('You cannot perform this action on the default admin user');
+        }
+    }
+
     // ─────────────────────────────────────────────
     // ADMIN
     // ─────────────────────────────────────────────
@@ -71,6 +85,8 @@ export class UserService {
         });
         if (!user) throw new BadRequestException(`User not found with ID ${userId}`);
 
+        this.assertNotDefaultAdminEmail(user.email);
+
         // await this.databaseService.user.delete({
         //     where: { id: userId },
         // });
@@ -97,6 +113,8 @@ export class UserService {
         });
         if (!user) throw new BadRequestException('User not found');
 
+        this.assertNotDefaultAdminEmail(user.email);
+
         const updatedUser = await this.databaseService.user.update({
             where: { id: userId },
             data: { isDisabled: !user.isDisabled },
@@ -122,6 +140,8 @@ export class UserService {
             where: { id: userId },
         });
         if (!user) throw new BadRequestException('User not found');
+
+        this.assertNotDefaultAdminEmail(user.email);
         if (user.isVerified) throw new BadRequestException('User is already verified');
 
         const updatedUser = await this.databaseService.user.update({

@@ -5,6 +5,8 @@ import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
 import { ProviderStatus, PaymentStatus, UserRole, BookingStatus, ProviderType } from 'generated/prisma/enums';
 import { AuthService } from '../auth/auth.service';
 import { Prisma } from 'generated/prisma/client';
+import { SAFE_USER_SELECT } from 'src/utils/auth.helper';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AdminService {
@@ -349,6 +351,91 @@ export class AdminService {
     // Users
     // ─────────────────────────────────────────
 
+    private getDefaultAdminEmail(): string | null {
+        const v = (process.env.DEFAULT_ADMIN_EMAIL || '').trim().toLowerCase();
+        return v ? v : null;
+    }
+
+    private assertNotDefaultAdminEmail(email?: string | null) {
+        const defaultEmail = this.getDefaultAdminEmail();
+        if (!defaultEmail) return;
+        const target = (email || '').trim().toLowerCase();
+        if (target && target === defaultEmail) {
+            throw new BadRequestException('You cannot perform this action on the default admin user');
+        }
+    }
+
+    async getUserById(userId: string) {
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            select: {
+                ...SAFE_USER_SELECT,
+                roles: true,
+                provider: true,
+            },
+        });
+        if (!user) throw new NotFoundException('User not found');
+        return { data: user };
+    }
+
+    async updateUser(userId: string, dto: {
+        email?: string;
+        firstName?: string;
+        lastName?: string;
+        phoneNumber?: string;
+        avatarUrl?: string;
+        gender?: any;
+        isVerified?: boolean;
+        isDisabled?: boolean;
+    }) {
+        const existing = await this.databaseService.user.findUnique({ where: { id: userId } });
+        if (!existing) throw new NotFoundException('User not found');
+
+        this.assertNotDefaultAdminEmail(existing.email);
+
+        if (dto.email && dto.email !== existing.email) {
+            const emailOwner = await this.databaseService.user.findUnique({ where: { email: dto.email } });
+            if (emailOwner && emailOwner.id !== userId && !emailOwner.isDeleted) {
+                throw new BadRequestException('Email already in use');
+            }
+        }
+
+        const emailChanged = dto.email !== undefined && dto.email !== existing.email;
+
+        const updated = await this.databaseService.user.update({
+            where: { id: userId },
+            data: {
+                ...(dto.email !== undefined && { email: dto.email }),
+                ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+                ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+                ...(dto.phoneNumber !== undefined && { phoneNumber: dto.phoneNumber }),
+                ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+                ...(dto.gender !== undefined && { gender: dto.gender }),
+                ...(dto.isVerified !== undefined && { isVerified: dto.isVerified }),
+                ...(dto.isDisabled !== undefined && { isDisabled: dto.isDisabled }),
+                ...(emailChanged && {
+                    isVerified: false,
+                    oneTimePassword: null,
+                    oneTimeExpire: null,
+                }),
+            },
+            select: {
+                ...SAFE_USER_SELECT,
+                roles: true,
+                provider: true,
+            },
+        });
+
+        await this.authService.invalidateUserCache(userId);
+
+        // If user is disabled or email changes, require re-login
+        if (updated.isDisabled || emailChanged) {
+            await this.databaseService.session.deleteMany({ where: { userId } });
+        }
+
+        return { message: 'User updated successfully', data: updated };
+    }
+
     async getAllUsers(queryStr: QueryString) {
         const features = new PrismaApiFeatures<
             Prisma.UserWhereInput,
@@ -455,6 +542,8 @@ export class AdminService {
         });
         if (!user) throw new NotFoundException('User not found');
 
+        this.assertNotDefaultAdminEmail(user.email);
+
         const alreadyHasRole = user.roles.some(r => r.role === role);
 
         // Derive provider types from role if not supplied
@@ -500,6 +589,128 @@ export class AdminService {
                 include: { roles: true, provider: { select: { id: true, name: true, type: true } } },
             });
         });
+    }
+
+    /** Add any role, including ADMIN. Provider roles are handled via assignRole(). */
+    async addRole(adminUserId: string, userId: string, role: UserRole, providerTypes?: ProviderType[]) {
+        if (adminUserId === userId) {
+            throw new BadRequestException('You cannot change your own roles');
+        }
+
+        const PROVIDER_ROLES: UserRole[] = [UserRole.HOST, UserRole.VENDOR, UserRole.GUIDE];
+        if (PROVIDER_ROLES.includes(role)) {
+            return this.assignRole(userId, role, providerTypes);
+        }
+
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            include: { roles: true, provider: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        this.assertNotDefaultAdminEmail(user.email);
+
+        const alreadyHasRole = user.roles.some(r => r.role === role);
+        if (!alreadyHasRole) {
+            await this.databaseService.userRoleMap.create({ data: { userId, role } });
+        }
+
+        const updated = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            select: {
+                ...SAFE_USER_SELECT,
+                roles: true,
+                provider: true,
+            },
+        });
+
+        await this.authService.invalidateUserCache(userId);
+        return { message: 'Role added successfully', data: updated };
+    }
+
+    async removeRole(adminUserId: string, userId: string, role: UserRole) {
+        if (adminUserId === userId) {
+            throw new BadRequestException('You cannot change your own roles');
+        }
+
+        const target = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            select: { email: true, isDeleted: true },
+        });
+        if (!target || target.isDeleted) throw new NotFoundException('User not found');
+        this.assertNotDefaultAdminEmail(target.email);
+
+        if (role === UserRole.ADMIN) {
+            if (adminUserId === userId) {
+                throw new BadRequestException('You cannot remove ADMIN role from yourself');
+            }
+
+            const adminCount = await this.databaseService.userRoleMap.count({
+                where: { role: UserRole.ADMIN },
+            });
+            if (adminCount <= 1) {
+                throw new BadRequestException('Cannot remove the last admin');
+            }
+        }
+
+        // Delete mapping if present
+        await this.databaseService.userRoleMap.deleteMany({
+            where: { userId, role },
+        });
+
+        await this.authService.invalidateUserCache(userId);
+        return { message: 'Role removed successfully' };
+    }
+
+    /** Admin sets a user's password; does not reveal current password. */
+    async setUserPassword(adminUserId: string, userId: string, password: string) {
+        if (adminUserId === userId) {
+            // Allow if you want, but spec says no action on default admin; not about self.
+            // Keeping this allowed for self (admins can reset their own password) unless blocked by default-admin rule.
+        }
+        const user = await this.databaseService.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true, isDeleted: true },
+        });
+        if (!user || user.isDeleted) throw new NotFoundException('User not found');
+
+        this.assertNotDefaultAdminEmail(user.email);
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        await this.databaseService.$transaction(async tx => {
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    passwordHash,
+                    resetToken: null,
+                    resetTokenExpire: null,
+                },
+            });
+
+            // Ensure password auth identity exists.
+            await tx.authIdentity.upsert({
+                where: {
+                    provider_providerId: {
+                        provider: 'PASSWORD' as any,
+                        providerId: user.email,
+                    },
+                },
+                create: {
+                    userId,
+                    provider: 'PASSWORD' as any,
+                    providerId: user.email,
+                },
+                update: {
+                    userId,
+                },
+            });
+        });
+
+        await this.authService.invalidateUserCache(userId);
+        await this.databaseService.session.deleteMany({ where: { userId } });
+
+        return { message: 'Password updated successfully' };
     }
 
     // ─────────────────────────────────────────
