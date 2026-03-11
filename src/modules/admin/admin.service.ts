@@ -365,6 +365,25 @@ export class AdminService {
         }
     }
 
+    private async assertIsDefaultAdmin(adminId: string) {
+        const defaultEmail = this.getDefaultAdminEmail();
+        if (!defaultEmail) return; // No restriction if default admin not configured
+
+        const admin = await this.databaseService.user.findUnique({
+            where: { id: adminId },
+            select: { email: true },
+        });
+
+        if (!admin) {
+            throw new BadRequestException('Admin user not found');
+        }
+
+        const adminEmail = (admin.email || '').trim().toLowerCase();
+        if (adminEmail !== defaultEmail.toLowerCase()) {
+            throw new BadRequestException('Only the default admin can perform this action');
+        }
+    }
+
     async getUserById(userId: string) {
         const user = await this.databaseService.user.findUnique({
             where: { id: userId },
@@ -610,6 +629,11 @@ export class AdminService {
 
         this.assertNotDefaultAdminEmail(user.email);
 
+        // Only default admin can add ADMIN role to users
+        if (role === UserRole.ADMIN) {
+            await this.assertIsDefaultAdmin(adminUserId);
+        }
+
         const alreadyHasRole = user.roles.some(r => r.role === role);
         if (!alreadyHasRole) {
             await this.databaseService.userRoleMap.create({ data: { userId, role } });
@@ -641,6 +665,9 @@ export class AdminService {
         this.assertNotDefaultAdminEmail(target.email);
 
         if (role === UserRole.ADMIN) {
+            // Only default admin can remove ADMIN role
+            await this.assertIsDefaultAdmin(adminUserId);
+
             if (adminUserId === userId) {
                 throw new BadRequestException('You cannot remove ADMIN role from yourself');
             }
@@ -665,16 +692,21 @@ export class AdminService {
     /** Admin sets a user's password; does not reveal current password. */
     async setUserPassword(adminUserId: string, userId: string, password: string) {
         if (adminUserId === userId) {
-            // Allow if you want, but spec says no action on default admin; not about self.
-            // Keeping this allowed for self (admins can reset their own password) unless blocked by default-admin rule.
+            // Allow self to change password
         }
         const user = await this.databaseService.user.findUnique({
             where: { id: userId },
-            select: { id: true, email: true, isDeleted: true },
+            select: { id: true, email: true, isDeleted: true, roles: true },
         });
         if (!user || user.isDeleted) throw new NotFoundException('User not found');
 
         this.assertNotDefaultAdminEmail(user.email);
+
+        // Only default admin can set password for other admins
+        const isTargetAdmin = user.roles?.some(r => r.role === UserRole.ADMIN);
+        if (isTargetAdmin && adminUserId !== userId) {
+            await this.assertIsDefaultAdmin(adminUserId);
+        }
 
         const passwordHash = await bcrypt.hash(password, 10);
 

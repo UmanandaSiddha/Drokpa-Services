@@ -89,21 +89,21 @@ export class UserController {
     // SOFT DELETE USER
     @Roles(UserRole.ADMIN)
     @Delete('admin/:id')
-    deleteUser(@Param('id') id: string) {
-        return this.userService.deleteUser(id);
+    deleteUser(@getUser('id') adminId: string, @Param('id') id: string) {
+        return this.userService.deleteUser(adminId, id);
     }
 
     // TOGGLE USER STATUS (enable/disable)
     @Roles(UserRole.ADMIN)
     @Put('admin/:id/status')
-    toggleUserStatus(@Param('id') id: string) {
-        return this.userService.toggleUserStatus(id);
+    toggleUserStatus(@getUser('id') adminId: string, @Param('id') id: string) {
+        return this.userService.toggleUserStatus(adminId, id);
     }
 
     // MANUALLY VERIFY USER
     @Roles(UserRole.ADMIN)
     @Put('admin/:id/verify')
-    verifyUser(@Param('id') id: string) {
-        return this.userService.verifyUser(id);
+    verifyUser(@getUser('id') adminId: string, @Param('id') id: string) {
+        return this.userService.verifyUser(adminId, id);
     }
 }

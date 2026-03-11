@@ -3,7 +3,7 @@ import { DatabaseService } from 'src/services/database/database.service';
 import { PrismaApiFeatures, QueryString } from 'src/utils/apiFeatures';
 import { UserDetailsDto } from './dto/details.dto';
 import { ProfileDto } from './dto/profile.dto';
-import { Gender } from 'generated/prisma/enums';
+import { Gender, UserRole } from 'generated/prisma/enums';
 import { Prisma } from 'generated/prisma/client';
 import { AuthService } from '../auth/auth.service';
 import { SAFE_USER_SELECT } from 'src/utils/auth.helper';
@@ -27,6 +27,29 @@ export class UserService {
         const target = (email || '').trim().toLowerCase();
         if (target && target === defaultEmail) {
             throw new BadRequestException('You cannot perform this action on the default admin user');
+        }
+    }
+
+    private async assertAdminCanModifyUser(adminId: string, targetUser: { email?: string | null; roles?: any[] }) {
+        // Get the default admin email
+        const defaultEmail = this.getDefaultAdminEmail();
+
+        // Check if target user is an admin
+        const targetIsAdmin = targetUser.roles?.some(r => r.role === UserRole.ADMIN);
+
+        if (targetIsAdmin && defaultEmail) {
+            // Only the default admin can modify other admins
+            const adminUser = await this.databaseService.user.findUnique({
+                where: { id: adminId },
+                select: { email: true },
+            });
+
+            const adminEmail = (adminUser?.email || '').trim().toLowerCase();
+            const isDefaultAdmin = adminEmail === defaultEmail.toLowerCase();
+
+            if (!isDefaultAdmin) {
+                throw new BadRequestException('Only the default admin can perform actions on other admins');
+            }
         }
     }
 
@@ -79,13 +102,15 @@ export class UserService {
     }
 
     // ADMIN: Delete User by ID
-    async deleteUser(userId: string) {
+    async deleteUser(adminId: string, userId: string) {
         const user = await this.databaseService.user.findUnique({
             where: { id: userId },
+            include: { roles: true },
         });
         if (!user) throw new BadRequestException(`User not found with ID ${userId}`);
 
         this.assertNotDefaultAdminEmail(user.email);
+        this.assertAdminCanModifyUser(adminId, user);
 
         // await this.databaseService.user.delete({
         //     where: { id: userId },
@@ -107,13 +132,15 @@ export class UserService {
     }
 
     // ADMIN: Toggle user disabled status
-    async toggleUserStatus(userId: string) {
+    async toggleUserStatus(adminId: string, userId: string) {
         const user = await this.databaseService.user.findUnique({
             where: { id: userId },
+            include: { roles: true },
         });
         if (!user) throw new BadRequestException('User not found');
 
         this.assertNotDefaultAdminEmail(user.email);
+        this.assertAdminCanModifyUser(adminId, user);
 
         const updatedUser = await this.databaseService.user.update({
             where: { id: userId },
@@ -135,13 +162,15 @@ export class UserService {
     }
 
     // ADMIN: Manually verify a user
-    async verifyUser(userId: string) {
+    async verifyUser(adminId: string, userId: string) {
         const user = await this.databaseService.user.findUnique({
             where: { id: userId },
+            include: { roles: true },
         });
         if (!user) throw new BadRequestException('User not found');
 
         this.assertNotDefaultAdminEmail(user.email);
+        this.assertAdminCanModifyUser(adminId, user);
         if (user.isVerified) throw new BadRequestException('User is already verified');
 
         const updatedUser = await this.databaseService.user.update({
