@@ -39,6 +39,13 @@ export class HomestayController {
         return this.homestayService.getHomestays(query);
     }
 
+    @Get('admin/all')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    getAllHomestays(@Query() query: QueryString) {
+        return this.homestayService.getAllHomestays(query);
+    }
+
     // Must be above GET :id to avoid route collision
     @Get('nearby')
     getNearbyHomestays(

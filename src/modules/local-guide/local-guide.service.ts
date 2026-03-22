@@ -109,6 +109,46 @@ export class LocalGuideService {
     }
 
     // ─────────────────────────────────────────
+    // Admin list (all statuses)
+    // ─────────────────────────────────────────
+
+    async getAllGuides(queryStr: QueryString) {
+        const features = new PrismaApiFeatures(
+            this.databaseService.localGuide,
+            queryStr,
+        )
+            .filter()
+            .sort({ createdAt: 'desc' } as Prisma.LocalGuideOrderByWithRelationInput)
+            .include(GUIDE_INCLUDE)
+            .pagination(20);
+
+        const keyword = queryStr.keyword;
+        if (keyword) {
+            const searchCondition = {
+                OR: [
+                    { bio: { contains: keyword, mode: 'insensitive' as Prisma.QueryMode } },
+                    { provider: { name: { contains: keyword, mode: 'insensitive' as Prisma.QueryMode } } },
+                ],
+            };
+            features.where(searchCondition as any);
+        }
+
+        const { results, totalCount } = await features.execute();
+        const page = Number(queryStr.page) || 1;
+        const limit = Number(queryStr.limit) || 20;
+
+        return {
+            data: results,
+            meta: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit),
+            },
+        };
+    }
+
+    // ─────────────────────────────────────────
     // Get by ID
     // ─────────────────────────────────────────
 

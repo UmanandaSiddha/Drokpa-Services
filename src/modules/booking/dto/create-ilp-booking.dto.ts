@@ -1,14 +1,15 @@
 import {
-    IsArray, IsDateString, IsString,
-    IsUUID, ValidateNested, ArrayMinSize, IsOptional, ArrayUnique,
+    ArrayMinSize,
+    IsArray,
+    IsDateString,
+    IsOptional,
+    IsString,
+    ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BookingGuestDto } from './booking-guest.dto';
 
-export class CreateTourBookingDto {
-    @IsUUID()
-    tourId: string;
-
+export class CreateIlpBookingDto {
     @IsDateString()
     startDate: string;
 
@@ -18,14 +19,15 @@ export class CreateTourBookingDto {
     @Type(() => BookingGuestDto)
     guests: BookingGuestDto[];
 
-    /** Optional promo / coupon code to apply at booking time */
+    @IsOptional()
+    @IsString()
+    ilpProductId?: string;
+
     @IsOptional()
     @IsString()
     couponCode?: string;
 
     @IsOptional()
-    @IsArray()
-    @ArrayUnique()
-    @IsUUID('4', { each: true })
-    addOnTrekIds?: string[];
+    @IsString()
+    specialRequests?: string;
 }

@@ -60,6 +60,14 @@ enum BookingStatus {
     EXPIRED
 }
 
+enum BookingDateRequestStatus {
+    PENDING
+    APPROVED
+    REJECTED
+    BOOKING_CREATED
+    CANCELLED
+}
+
 enum VehicleType {
     BIKE
     SCOOTY
@@ -183,7 +191,7 @@ model Address {
     createdAt  DateTime                              @default(now()) @map("created_at")
     updatedAt  DateTime                              @default(now()) @updatedAt @map("updated_at")
 
-    tours       Tour[]
+    tours       Tour[]       @relation("TourAddress")
     homestays   Homestay[]
     pois        POI[]
     vehicles    Vehicle[]
@@ -366,17 +374,19 @@ model User {
     createdAt               DateTime  @default(now()) @map("created_at")
     updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
 
-    provider          Provider?
-    roles             UserRoleMap[]
-    sessions          Session[]
-    authIdentities    AuthIdentity[]
-    bookings          Booking[]
-    reviews           Review[]
-    memories          Memories[]
-    bucketLists       BucketList[]
-    documents         Document[]
-    couponAssignments CouponUserAssignment[] // Private coupons issued to this user
-    couponUsages      CouponUsage[] // History of coupons redeemed by this user
+    provider                    Provider?
+    roles                       UserRoleMap[]
+    sessions                    Session[]
+    authIdentities              AuthIdentity[]
+    bookings                    Booking[]
+    bookingDateRequests         BookingDateRequest[]   @relation("BookingDateRequestUser")
+    reviewedBookingDateRequests BookingDateRequest[]   @relation("BookingDateRequestReviewer")
+    reviews                     Review[]
+    memories                    Memories[]
+    bucketLists                 BucketList[]
+    documents                   Document[]
+    couponAssignments           CouponUserAssignment[] // Private coupons issued to this user
+    couponUsages                CouponUsage[] // History of coupons redeemed by this user
 
     @@index([email, isVerified])
     @@index([isDisabled, isVerified])
@@ -536,6 +546,25 @@ model TourTag {
     @@id([tourId, tagId])
 }
 
+model TourSuggestedTrek {
+    id           String   @id @default(uuid())
+    tourId       String
+    trekId       String
+    rules        String[] @default([])
+    conditions   String[] @default([])
+    displayOrder Int      @default(0)
+    isActive     Boolean  @default(true)
+    createdAt    DateTime @default(now()) @map("created_at")
+    updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+    tour Tour @relation("TourToSuggestedTreks", fields: [tourId], references: [id], onDelete: Cascade)
+    trek Tour @relation("TrekSuggestedForTours", fields: [trekId], references: [id], onDelete: Cascade)
+
+    @@unique([tourId, trekId])
+    @@index([tourId, isActive, displayOrder])
+    @@index([trekId])
+}
+
 model HomestayTag {
     homestayId String
     tagId      String
@@ -607,38 +636,48 @@ model TourItineraryPOI {
 // to prevent drift.
 // ─────────────────────────────────────────────
 model Tour {
-    id           String   @id @default(uuid())
-    title        String
-    slug         String   @unique // SEO-friendly URL slug
-    description  String
-    type         TourType @default(TOUR)
-    basePrice    Int // Original price
-    discount     Int      @default(0) // Percentage discount (0-100)
-    finalPrice   Int // Actual selling price — keep in sync with basePrice/discount
-    duration     Int // In days
-    imageUrls    String[]
-    maxCapacity  Int      @default(10)
-    rating       Float?   @default(0)
-    totalReviews Int      @default(0)
-    isActive     Boolean  @default(true)
-    about        String?
-    included     String[]
-    notIncluded  String[]
-    highlights   String[]
-    brochure     String?
-    addressId    String?
-    providerId   String?
-    guideId      String?
-    createdAt    DateTime @default(now()) @map("created_at")
-    updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+    id                        String   @id @default(uuid())
+    title                     String
+    slug                      String   @unique // SEO-friendly URL slug
+    description               String
+    type                      TourType @default(TOUR)
+    basePrice                 Int // Original price
+    discount                  Int      @default(0) // Percentage discount (0-100)
+    finalPrice                Int // Actual selling price — keep in sync with basePrice/discount
+    duration                  Int // In days
+    maxAltitude               String?
+    distance                  String?
+    bestSeason                String?
+    customDateRequestEnabled  Boolean  @default(true)
+    customDateMinParticipants Int?
+    bookingRules              String[] @default([])
+    bookingConditions         String[] @default([])
+    imageUrls                 String[]
+    maxCapacity               Int      @default(10)
+    rating                    Float?   @default(0)
+    totalReviews              Int      @default(0)
+    isActive                  Boolean  @default(true)
+    about                     String?
+    included                  String[]
+    notIncluded               String[]
+    highlights                String[]
+    brochure                  String?
+    addressId                 String?
+    providerId                String?
+    guideId                   String?
+    createdAt                 DateTime @default(now()) @map("created_at")
+    updatedAt                 DateTime @default(now()) @updatedAt @map("updated_at")
 
-    guide           LocalGuide?      @relation(fields: [guideId], references: [id])
-    address         Address?         @relation(fields: [addressId], references: [id])
-    provider        Provider?        @relation(fields: [providerId], references: [id])
-    reviews         Review[]
-    tags            TourTag[]
-    itinerary       TourItinerary[]
-    bucketListItems BucketListItem[]
+    guide               LocalGuide?          @relation(fields: [guideId], references: [id])
+    address             Address?             @relation("TourAddress", fields: [addressId], references: [id])
+    provider            Provider?            @relation(fields: [providerId], references: [id])
+    reviews             Review[]
+    tags                TourTag[]
+    suggestedTreks      TourSuggestedTrek[]  @relation("TourToSuggestedTreks")
+    suggestedForTours   TourSuggestedTrek[]  @relation("TrekSuggestedForTours")
+    bookingDateRequests BookingDateRequest[]
+    itinerary           TourItinerary[]
+    bucketListItems     BucketListItem[]
 
     @@index([providerId])
     @@index([isActive, rating])
@@ -830,16 +869,50 @@ model Booking {
     createdAt          DateTime      @default(now()) @map("created_at")
     updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
 
-    user    User          @relation(fields: [userId], references: [id])
-    coupon  Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
-    reviews Review[]
-    payment Payment[]
-    items   BookingItem[]
+    user         User                 @relation(fields: [userId], references: [id])
+    coupon       Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
+    reviews      Review[]
+    payment      Payment[]
+    items        BookingItem[]
+    dateRequests BookingDateRequest[] @relation("BookingCreatedFromRequest")
 
     @@index([userId, status, createdAt(sort: Desc)])
     @@index([status, expiresAt])
     @@index([createdAt])
     @@index([couponId])
+}
+
+model BookingDateRequest {
+    id                 String                   @id @default(uuid())
+    userId             String
+    tourId             String
+    status             BookingDateRequestStatus @default(PENDING)
+    requestedStartDate DateTime
+    requestedEndDate   DateTime?
+    approvedStartDate  DateTime?
+    approvedEndDate    DateTime?
+    participantsCount  Int
+    guests             Json
+    addOnTrekIds       String[]                 @default([])
+    specialRequests    String?                  @db.Text
+    couponCode         String?
+    requestedThreshold Int?
+    adminNote          String?                  @db.Text
+    rejectionReason    String?                  @db.Text
+    reviewedBy         String?
+    reviewedAt         DateTime?
+    createdBookingId   String?                  @unique
+    createdAt          DateTime                 @default(now()) @map("created_at")
+    updatedAt          DateTime                 @default(now()) @updatedAt @map("updated_at")
+
+    user           User     @relation("BookingDateRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+    tour           Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
+    reviewer       User?    @relation("BookingDateRequestReviewer", fields: [reviewedBy], references: [id])
+    createdBooking Booking? @relation("BookingCreatedFromRequest", fields: [createdBookingId], references: [id])
+
+    @@index([userId, status, createdAt(sort: Desc)])
+    @@index([tourId, status])
+    @@index([reviewedBy])
 }
 
 // ─────────────────────────────────────────────

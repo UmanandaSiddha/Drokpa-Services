@@ -193,12 +193,43 @@ export class HomestayService {
     }
 
     // ─────────────────────────────────────────
+    // Admin list (all statuses)
+    // ─────────────────────────────────────────
+
+    async getAllHomestays(queryStr: QueryString) {
+        const features = new PrismaApiFeatures(
+            this.databaseService.homestay,
+            queryStr,
+        )
+            .search(['name', 'description'])
+            .filter()
+            .sort({ createdAt: 'desc' } as Prisma.HomestayOrderByWithRelationInput)
+            .include(HOMESTAY_LIST_INCLUDE)
+            .pagination(20);
+
+        const { results, totalCount } = await features.execute();
+
+        const page = Number(queryStr.page) || 1;
+        const limit = Number(queryStr.limit) || 20;
+
+        return {
+            data: results,
+            meta: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit),
+            },
+        };
+    }
+
+    // ─────────────────────────────────────────
     // Provider's own homestays
     // ─────────────────────────────────────────
 
-    async getProviderHomestays(providerId: string) {
+    async getProviderHomestays(userId: string) {
         const provider = await this.databaseService.provider.findUnique({
-            where: { id: providerId },
+            where: { userId },
             select: { id: true },
         });
         if (!provider) {
@@ -206,7 +237,7 @@ export class HomestayService {
         }
 
         return this.databaseService.homestay.findMany({
-            where: { providerId },
+            where: { providerId: provider.id },
             include: {
                 // Provider already knows who they are — omit provider relation here
                 address: true,

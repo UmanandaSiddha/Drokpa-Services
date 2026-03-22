@@ -51,6 +51,11 @@ export class SchedulerService {
                             item.startDate &&
                             item.endDate
                         ) {
+                            const reservedRooms =
+                                item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+                                    ? Number((item.metadata as { rooms?: unknown }).rooms) || item.quantity
+                                    : item.quantity;
+
                             const availability = await tx.roomAvailability.findMany({
                                 where: {
                                     roomId: item.productId,
@@ -62,7 +67,7 @@ export class SchedulerService {
                                 availability.map(avail =>
                                     tx.roomAvailability.update({
                                         where: { id: avail.id },
-                                        data: { available: { increment: item.quantity } },
+                                        data: { available: { increment: reservedRooms } },
                                     }),
                                 ),
                             );

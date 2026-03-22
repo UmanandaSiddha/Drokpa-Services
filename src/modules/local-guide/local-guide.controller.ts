@@ -36,6 +36,13 @@ export class LocalGuideController {
         return this.localGuideService.getGuides(query);
     }
 
+    @Get('admin/all')
+    @UseGuards(AuthGuard, RoleGuard)
+    @Roles(UserRole.ADMIN)
+    getAllGuides(@Query() query: QueryString) {
+        return this.localGuideService.getAllGuides(query);
+    }
+
     @Get('nearby')
     getNearbyGuides(
         @Query('latitude') latitude?: string,

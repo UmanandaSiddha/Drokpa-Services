@@ -1,6 +1,10 @@
 import {
-    IsDateString, IsInt, IsOptional,
-    IsString, IsUUID, Min,
+    IsDateString,
+    IsInt,
+    IsOptional,
+    IsString,
+    IsUUID,
+    Min,
 } from 'class-validator';
 
 export class CreateHomestayBookingDto {
@@ -12,10 +16,6 @@ export class CreateHomestayBookingDto {
 
     @IsDateString()
     checkOut: string;
-
-    @IsInt()
-    @Min(1)
-    rooms: number;
 
     @IsInt()
     @Min(1)

@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min, IsEmail } from 'class-validator';
+import { IsDateString, IsEmail, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { Gender } from 'generated/prisma/enums';
 
 export class BookingGuestDto {
@@ -26,4 +26,8 @@ export class BookingGuestDto {
     @IsOptional()
     @IsString()
     identityProofId?: string;
+
+    @IsOptional()
+    @IsDateString()
+    dateOfArrival?: string;
 }
